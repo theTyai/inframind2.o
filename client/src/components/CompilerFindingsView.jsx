@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { runCompilerChecks, RULE_CATEGORIES } from "../lib/consistencyEngine.js";
 
-export default function CompilerFindingsView({ canonicalModel }) {
+export default function CompilerFindingsView({ canonicalModel, onSelectArtifactById }) {
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [selectedSeverity, setSelectedSeverity] = useState("ALL");
   const [expandedId, setExpandedId] = useState(null);
@@ -266,12 +266,35 @@ export default function CompilerFindingsView({ canonicalModel }) {
 
                   {finding.affectedArtifacts?.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#737e92", display: "block", marginBottom: 4 }}>AFFECTED ARTIFACTS</span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ide-text-muted, #737e92)", display: "block", marginBottom: 4 }}>AFFECTED ARTIFACTS</span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {finding.affectedArtifacts.map(id => (
-                          <span key={id} style={{ fontSize: 10, padding: "2px 6px", background: "rgba(255,255,255,0.06)", borderRadius: 3, fontFamily: "monospace", color: "#a2abbd" }}>
-                            {id}
-                          </span>
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onSelectArtifactById) onSelectArtifactById(id);
+                            }}
+                            className="affected-artifact-chip"
+                            title={`Inspect ${id} in Inspector`}
+                            style={{
+                              fontSize: 10.5,
+                              padding: "2px 7px",
+                              background: "rgba(83,215,244,0.1)",
+                              border: "1px solid rgba(83,215,244,0.25)",
+                              borderRadius: 4,
+                              fontFamily: "monospace",
+                              color: "var(--ide-accent, #53d7f4)",
+                              cursor: onSelectArtifactById ? "pointer" : "default",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4
+                            }}
+                          >
+                            <span>{id}</span>
+                            <ArrowRight size={10} style={{ opacity: 0.7 }} />
+                          </button>
                         ))}
                       </div>
                     </div>

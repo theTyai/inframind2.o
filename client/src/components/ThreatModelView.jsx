@@ -14,7 +14,7 @@ const STRIDE_COLORS = {
   E: { label: "Elevation of Privilege", color: "#ff5252" }
 };
 
-export default function ThreatModelView({ canonicalModel }) {
+export default function ThreatModelView({ canonicalModel, onSelectArtifactById }) {
   const initialThreats = canonicalModel?.threats || [];
   const [threats, setThreats] = useState(initialThreats);
   const [filterCategory, setFilterCategory] = useState("ALL");
@@ -142,8 +142,31 @@ export default function ThreatModelView({ canonicalModel }) {
                       >
                         {threat.category}
                       </span>
-                      <span style={{ fontSize: 11, color: "#737e92", fontFamily: "monospace" }}>
-                        ID: {threat.id} · Target: {threat.componentId}
+                      <span style={{ fontSize: 11, color: "var(--ide-text-muted, #737e92)", fontFamily: "monospace", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span>ID: {threat.id}</span>
+                        <span>·</span>
+                        <span>Target:</span>
+                        {threat.componentId ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectArtifactById && onSelectArtifactById(threat.componentId)}
+                            style={{
+                              background: "rgba(83,215,244,0.1)",
+                              border: "1px solid rgba(83,215,244,0.25)",
+                              borderRadius: 3,
+                              color: "var(--ide-accent, #53d7f4)",
+                              fontSize: 10,
+                              fontFamily: "monospace",
+                              padding: "1px 5px",
+                              cursor: onSelectArtifactById ? "pointer" : "default"
+                            }}
+                            title={`Inspect ${threat.componentId}`}
+                          >
+                            {threat.componentId}
+                          </button>
+                        ) : (
+                          <span>None</span>
+                        )}
                       </span>
                     </div>
                     <strong style={{ fontSize: 15, color: "#f3f5fa" }}>{threat.title}</strong>

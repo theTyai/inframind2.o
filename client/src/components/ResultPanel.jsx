@@ -25,6 +25,7 @@ import IdeProblemsPanel from "./ide/IdeProblemsPanel.jsx";
 import IdeCommandPalette from "./ide/IdeCommandPalette.jsx";
 import IdeStatusBar from "./ide/IdeStatusBar.jsx";
 import LiveMockServerView from "./ide/LiveMockServerView.jsx";
+import IdeSubNavBar from "./ide/IdeSubNavBar.jsx";
 
 // Structured Overview Components
 import ProjectBrief from "./overview/ProjectBrief.jsx";
@@ -137,7 +138,7 @@ export default function ResultPanel({
   }, [canonicalModel, selectedArtifact, setSelectedArtifact]);
 
   // Jump from finding or search to artifact
-  const handleSelectArtifactById = useCallback((artifactId) => {
+  const handleSelectArtifactById = useCallback((artifactId, shouldSwitchWorkspace = false) => {
     // Look up in components, apis, entities, requirements, actors, tests
     let found = null;
     const comps = canonicalModel.components || [];
@@ -174,13 +175,12 @@ export default function ResultPanel({
     if (found) {
       setSelectedArtifact(found);
       setIsInspectorOpen(true);
-      // If currently on Overview or Validate, switch to Architecture Graph to see it
-      if (workspace !== "architecture") {
+      if (shouldSwitchWorkspace && workspace !== "architecture") {
         setWorkspace("architecture");
         setArchSubView("dependencies");
       }
     }
-  }, [canonicalModel, workspace]);
+  }, [canonicalModel, workspace, setSelectedArtifact, setIsInspectorOpen, setWorkspace, setArchSubView]);
 
   async function copyFile(file) {
     try {
@@ -342,92 +342,31 @@ export default function ResultPanel({
         {/* 3. Center Canvas & Contextual Workspace */}
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }}>
           {/* Sub-view context bar inside Canvas */}
-          <div style={{
-            padding: "6px 14px",
-            background: "#08090d",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flexShrink: 0
-          }}>
-            <span style={{ fontSize: 10, color: "#737e92", fontWeight: 700, marginRight: 4 }}>CANVAS:</span>
-            {workspace === "overview" && [
-              { id: "all", label: "Full Specification" },
-              { id: "summary", label: "Health Summary" },
-              { id: "brief", label: "Product Brief" },
-              { id: "requirements", label: "Requirements" },
-              { id: "decisions", label: "Decisions (ADRs)" },
-              { id: "assumptions", label: "Assumptions & Non-Goals" },
-              { id: "roadmap", label: "Roadmap" }
-            ].map(item => (
-              <button
-                key={item.id}
-                className={`sub-nav-pill ${overviewSubView === item.id ? "active" : ""}`}
-                onClick={() => setOverviewSubView(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-
-            {workspace === "architecture" && [
-              { id: "dependencies", label: "Causal Dependencies (Graph)", icon: Zap },
-              { id: "map", label: "System Map (Mermaid)", icon: Workflow },
-              { id: "data_apis", label: "Data Models & REST APIs", icon: Database },
-              { id: "inventory", label: "Component Inventory", icon: Boxes }
-            ].map(item => (
-              <button
-                key={item.id}
-                className={`sub-nav-pill ${archSubView === item.id ? "active" : ""}`}
-                onClick={() => setArchSubView(item.id)}
-              >
-                <item.icon size={11} />
-                {item.label}
-              </button>
-            ))}
-
-            {workspace === "impact" && (
-              <span className="sub-nav-pill active">
-                <Activity size={11} /> 3-Pane Ripple & Patch Simulator
-              </span>
-            )}
-
-            {workspace === "validate" && [
-              { id: "checks", label: "Compiler Invariant Checks", icon: ShieldCheck },
-              { id: "threats", label: "STRIDE Threat Model", icon: LockKeyhole },
-              { id: "workflows", label: "Workflow State Simulator", icon: ListChecks },
-              { id: "api_flows", label: "Visual API Test Flows", icon: Play }
-            ].map(item => (
-              <button
-                key={item.id}
-                className={`sub-nav-pill ${validateSubView === item.id ? "active" : ""}`}
-                onClick={() => setValidateSubView(item.id)}
-              >
-                <item.icon size={11} />
-                {item.label}
-              </button>
-            ))}
-
-            {workspace === "build" && [
-              { id: "scaffold", label: "Starter Scaffold Code", icon: Code2 },
-              { id: "mock", label: "Live Mock API Runner", icon: Play },
-              { id: "openapi", label: "OpenAPI 3.1 Spec", icon: FileJson },
-              { id: "reality", label: "Repo Reality Check", icon: FileCode },
-              { id: "history", label: "Version History & Diffs", icon: History }
-            ].map(item => (
-              <button
-                key={item.id}
-                className={`sub-nav-pill ${buildSubView === item.id ? "active" : ""}`}
-                onClick={() => setBuildSubView(item.id)}
-              >
-                <item.icon size={11} />
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <IdeSubNavBar
+            workspace={workspace}
+            overviewSubView={overviewSubView}
+            setOverviewSubView={setOverviewSubView}
+            archSubView={archSubView}
+            setArchSubView={setArchSubView}
+            validateSubView={validateSubView}
+            setValidateSubView={setValidateSubView}
+            buildSubView={buildSubView}
+            setBuildSubView={setBuildSubView}
+            canonicalModel={canonicalModel}
+            compilerFindings={compilerFindings}
+          />
 
           {/* Canvas View Content Body */}
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
+          <div
+            className="ide-canvas-content"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: workspace === "architecture" && archSubView === "dependencies" ? "hidden" : "auto",
+              padding: workspace === "architecture" && archSubView === "dependencies" ? 0 : 14,
+              position: "relative"
+            }}
+          >
             {/* WORKSPACE 1: OVERVIEW */}
             {workspace === "overview" && (
               <div className="data-panel overview-panel" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -669,7 +608,7 @@ export default function ResultPanel({
 
             {/* WORKSPACE 3: CHANGE IMPACT */}
             {workspace === "impact" && (
-              <div className="data-panel">
+              <div className="data-panel" style={{ padding: 0 }}>
                 <ChangeImpactWorkspace
                   canonicalModel={canonicalModel}
                   initialTargetNode={selectedImpactTarget || selectedArtifact}
@@ -683,12 +622,18 @@ export default function ResultPanel({
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {validateSubView === "checks" && (
                   <div className="data-panel">
-                    <CompilerFindingsView canonicalModel={canonicalModel} />
+                    <CompilerFindingsView
+                      canonicalModel={canonicalModel}
+                      onSelectArtifactById={handleSelectArtifactById}
+                    />
                   </div>
                 )}
                 {validateSubView === "threats" && (
                   <div className="data-panel">
-                    <ThreatModelView canonicalModel={canonicalModel} />
+                    <ThreatModelView
+                      canonicalModel={canonicalModel}
+                      onSelectArtifactById={handleSelectArtifactById}
+                    />
                   </div>
                 )}
                 {validateSubView === "workflows" && (

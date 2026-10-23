@@ -172,3 +172,14 @@
   overflow: hidden;
   background: var(--ide-bg-canvas);
 }
+
+/* ─── IDE Sub Navigation Bar ──────────────────────────────────────────────── */
+.ide-sub-nav-pill:hover:not(.active) {
+  background: var(--ide-bg-hover, rgba(255, 255, 255, 0.05)) !important;
+  color: var(--ide-text-primary, #f3f5fa) !important;
+}
+
+.ide-sub-nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
