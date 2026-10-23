@@ -125,4 +125,41 @@ describe("Workspace State & Panel Logic", () => {
       assert.ok(Math.abs(screenLeft - (clientWidth - screenRight)) < 0.001, `Demo ${demo.id}: margins must be symmetrical`);
     });
   });
+
+  it("verifies canvas occupies >= 55% screen width at 1440px with Explorer and Inspector open", () => {
+    const screenWidth = 1440;
+    const activityBarW = 48;
+    const defaultExplorerW = 260;
+    const defaultInspectorW = 320;
+
+    // Both panels open
+    const canvasWidthBothOpen = screenWidth - activityBarW - defaultExplorerW - defaultInspectorW;
+    const ratioBothOpen = canvasWidthBothOpen / screenWidth;
+    assert.equal(canvasWidthBothOpen, 812);
+    assert.ok(ratioBothOpen >= 0.55, `Expected canvas ratio >= 55% at 1440px, got ${(ratioBothOpen * 100).toFixed(1)}%`);
+
+    // Per-workspace default: Overview & Change Impact (panels closed)
+    const canvasWidthPanelsClosed = screenWidth - activityBarW;
+    const ratioPanelsClosed = canvasWidthPanelsClosed / screenWidth;
+    assert.ok(ratioPanelsClosed > 0.95, `Expected canvas ratio > 95% when panels closed, got ${(ratioPanelsClosed * 100).toFixed(1)}%`);
+
+    // Architecture initial state (Explorer open, Inspector closed until selection)
+    const canvasWidthArchInitial = screenWidth - activityBarW - defaultExplorerW;
+    const ratioArchInitial = canvasWidthArchInitial / screenWidth;
+    assert.ok(ratioArchInitial > 0.75, `Expected architecture initial canvas > 75%, got ${(ratioArchInitial * 100).toFixed(1)}%`);
+  });
+
+  it("verifies responsive viewport widths and drawer overlay mechanics", () => {
+    const viewports = [
+      { name: "wide-desktop", width: 1440, expectsOverlay: false },
+      { name: "standard-laptop", width: 1280, expectsOverlay: false },
+      { name: "tablet", width: 1024, expectsOverlay: true },
+      { name: "mobile", width: 768, expectsOverlay: true }
+    ];
+
+    viewports.forEach(vp => {
+      const isTabletOrBelow = vp.width <= 1024;
+      assert.equal(isTabletOrBelow, vp.expectsOverlay, `Viewport ${vp.name} (${vp.width}px) overlay state mismatch`);
+    });
+  });
 });

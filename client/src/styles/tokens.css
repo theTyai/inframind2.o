@@ -183,3 +183,34 @@
   display: none;
 }
 
+/* ─── Responsive Viewport Adaptations ─────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .ide-inspector-panel {
+    position: absolute !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    z-index: var(--ide-z-drawer, 30) !important;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.6) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .ide-explorer-panel {
+    position: absolute !important;
+    left: 48px !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    z-index: var(--ide-z-drawer, 30) !important;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.6) !important;
+  }
+
+  .ide-status-bar {
+    padding: 0 8px !important;
+  }
+
+  .project-fullscreen-shell {
+    padding-bottom: 56px; /* Avoid collision with mobile-bottom-nav */
+  }
+}
+
