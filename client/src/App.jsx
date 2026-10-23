@@ -348,6 +348,56 @@ export default function App() {
     projects[0] ||
     null;
 
+  // Project Workspace renders in a clean fullscreen IDE shell (no stacked app topbar/footer/sidebar)
+  if (view === "project" && activeProject) {
+    return (
+      <div className="project-fullscreen-shell">
+        <ProjectWorkspace
+          project={activeProject}
+          user={user}
+          onBack={() => navigateTo("projects")}
+          onNavigateGlobal={(target) => navigateTo(target)}
+          onSignOut={async () => {
+            await signout();
+            navigateTo("landing");
+          }}
+          onGenerateNewVersion={handleGenerateNewVersion}
+          onCommitRevision={handleCommitRevision}
+          onDuplicate={handleDuplicateProject}
+          onRenameProject={handleRenameProject}
+          onDeleteProject={handleDeleteProject}
+          generatingVersion={generatingVersion}
+          versionError={versionError}
+        />
+
+        {/* Preserving responsive bottom navigation bar at <=768px */}
+        <nav className="mobile-bottom-nav project-mobile-nav" aria-label="Mobile Navigation">
+          <button
+            className="mobile-nav-item"
+            onClick={() => navigateTo("projects")}
+          >
+            <FolderKanban size={16} />
+            <span>Projects</span>
+          </button>
+          <button
+            className="mobile-nav-item"
+            onClick={() => navigateTo("dashboard")}
+          >
+            <Workflow size={16} />
+            <span>Dashboard</span>
+          </button>
+        </nav>
+
+        <AuthModal
+          isOpen={authModalOpen}
+          initialMode={authModalMode}
+          onClose={() => setAuthModalOpen(false)}
+          onSuccess={() => navigateTo("dashboard")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="site-shell">
       {/* ─── Workspace Sidebar ─────────────────────────────────────────────────── */}

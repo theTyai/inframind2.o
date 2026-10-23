@@ -17,12 +17,26 @@ const TYPE_CONFIG = {
   test: { bg: "rgba(79, 209, 197, 0.15)", border: "#4fd1c5", text: "#b2f5ea", icon: CheckSquare, label: "Verification" }
 };
 
-export default function CausalGraph({ canonicalModel, onSelectForImpact }) {
+export default function CausalGraph({
+  canonicalModel,
+  onSelectForImpact,
+  selectedNodeId: externalSelectedNodeId,
+  onSelectNode
+}) {
   const containerRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 40, y: 40 });
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [internalSelectedNodeId, setInternalSelectedNodeId] = useState(null);
+  const selectedNodeId = externalSelectedNodeId !== undefined ? externalSelectedNodeId : internalSelectedNodeId;
+
+  const setSelectedNodeId = (id) => {
+    setInternalSelectedNodeId(id);
+    if (onSelectNode) {
+      const node = graph.nodes.find(n => n.id === id);
+      onSelectNode(node || (id ? { id, label: id, type: "component" } : null));
+    }
+  };
   const [layoutMode, setLayoutMode] = useState("lr"); // "lr" | "tb" | "cluster"
   const [viewMode, setViewMode] = useState("graph"); // "graph" | "table"
   const [activeTypeFilters, setActiveTypeFilters] = useState(new Set([
@@ -293,6 +307,14 @@ export default function CausalGraph({ canonicalModel, onSelectForImpact }) {
 
     setPan({ x: Math.round(targetX), y: Math.round(targetY) });
   }, [nodePositions, zoom]);
+
+  // Center when externalSelectedNodeId changes
+  useEffect(() => {
+    if (externalSelectedNodeId) {
+      const timer = setTimeout(() => centerNode(externalSelectedNodeId), 60);
+      return () => clearTimeout(timer);
+    }
+  }, [externalSelectedNodeId, centerNode]);
 
   function toggleTypeFilter(type) {
     setActiveTypeFilters(prev => {

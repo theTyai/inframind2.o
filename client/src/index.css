@@ -4159,3 +4159,43 @@ textarea::placeholder {
 }
 
 
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   InfraMind IDE Workspace Styles (Activity Bar, Explorer, Inspector, Problems)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.ide-workspace-shell {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #f3f5fa;
+}
+
+.explorer-cat-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.explorer-item-row:hover {
+  background: rgba(139, 124, 255, 0.1) !important;
+}
+
+.problems-row:hover {
+  background: #121722 !important;
+}
+
+.command-palette-card input::placeholder {
+  color: #737e92;
+}
+
+.ide-problems-panel ::-webkit-scrollbar,
+.ide-explorer-panel ::-webkit-scrollbar,
+.ide-inspector-panel ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.ide-problems-panel ::-webkit-scrollbar-thumb,
+.ide-explorer-panel ::-webkit-scrollbar-thumb,
+.ide-inspector-panel ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}

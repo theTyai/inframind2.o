@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/blueprint.test.js src/lib/demos.test.js src/lib/controlPlane.test.js src/lib/workspaceRefactor.test.js src/lib/correctnessFixes.test.js"
+    "test": "node --test src/lib/blueprint.test.js src/lib/demos.test.js src/lib/controlPlane.test.js src/lib/workspaceRefactor.test.js src/lib/correctnessFixes.test.js src/lib/workspaceState.test.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

@@ -6,9 +6,10 @@ import cookieParser from "cookie-parser";
 import archiver from "archiver";
 import { z } from "zod";
 import { connectDB } from "./db.js";
-import { generateArchitecture } from "./openrouter.js";
 import authRouter from "./routes/auth.js";
 import projectsRouter from "./routes/projects.js";
+import mockRouter from "./routes/mock.js";
+import docsRouter from "./routes/docs.js";
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -24,57 +25,45 @@ app.use(cors({
 }));
 
 // ─── Body / Cookies ──────────────────────────────────────────────────────────
-app.use(express.json({ limit: "64kb" }));
+// Allow up to 2MB for blueprint imports / payloads
+app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 
 // ─── Global rate limit ───────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 60,
+  limit: 120,
   standardHeaders: true,
   legacyHeaders: false
 });
 app.use("/api", globalLimiter);
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
-app.get("/api/health", (_req, res) => res.json({ status: "ok", service: "InfraMind API v2" }));
+// ─── Service Health & Readiness ──────────────────────────────────────────────
+app.get("/api/health", (_req, res) => res.json({
+  status: "ok",
+  service: "InfraMind API v2.1",
+  engine: "Deterministic Consistency Compiler + Staged SSE Pipeline"
+}));
 
+// ─── Interactive OpenAPI Documentation (Dogfooding) ──────────────────────────
+app.use("/docs", docsRouter);
+app.use("/api/docs", docsRouter);
+
+// ─── Core Application Routes ─────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
 app.use("/api/projects", projectsRouter);
 
-// ─── Legacy generate (unauthenticated, kept for backward compat) ─────────────
-const RequestSchema = z.object({
-  specification: z.string().trim().min(20).max(10000)
-});
+// ─── Live Mock API Server for Blueprints ──────────────────────────────────────
+// Mounted at both /api/mock/:projectId/* and /mock/:projectId/*
+app.use("/api/mock", mockRouter);
+app.use("/mock", mockRouter);
 
-const generateLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many generation requests. Please wait a minute." }
-});
-
-app.post("/api/generate", generateLimiter, async (req, res) => {
-  const input = RequestSchema.safeParse(req.body);
-  if (!input.success) {
-    return res.status(400).json({ error: "Provide a specification between 20 and 10,000 characters." });
-  }
-  try {
-    const result = await generateArchitecture(input.data.specification);
-    res.json(result);
-  } catch (error) {
-    console.error("Generation failed:", error.message);
-    res.status(502).json({ error: "Unable to generate the architecture. Check your OpenRouter API key, model ID, account credits, and server logs, then try again." });
-  }
-});
-
-// ─── Export (ZIP scaffold) ────────────────────────────────────────────────────
+// ─── Safe Fallback Client ZIP Export (for guests / demos) ────────────────────
 app.post("/api/export", async (req, res) => {
   const schema = z.object({
     files: z.array(z.object({
-      path: z.string().min(1).max(200),
-      content: z.string().max(200000)
+      path: z.string().min(1).max(250),
+      content: z.string().max(300000)
     })).min(1).max(100)
   });
   const parsed = schema.safeParse(req.body);

@@ -2,7 +2,7 @@
  * Centralized API client.
  * All credentials are sent via HttpOnly cookies — no tokens stored in JS.
  */
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -39,7 +39,7 @@ function checkId(id) {
   return id;
 }
 
-// ─── Projects ────────────────────────────────────────────────────────────────
+// ─── Projects & Revisions ─────────────────────────────────────────────────────
 export const projectsApi = {
   list: () => request("/api/projects"),
   create: (body) => request("/api/projects", { method: "POST", body: JSON.stringify(body) }),
@@ -49,10 +49,42 @@ export const projectsApi = {
   duplicate: (id) => request(`/api/projects/${checkId(id)}/duplicate`, { method: "POST" }),
   generate: (id, specification) =>
     request(`/api/projects/${checkId(id)}/generate`, { method: "POST", body: JSON.stringify({ specification }) }),
-  getVersion: (id, vid) => request(`/api/projects/${checkId(id)}/versions/${checkId(vid)}`)
+  getVersion: (id, vid) => request(`/api/projects/${checkId(id)}/versions/${checkId(vid)}`),
+  getRevisions: (id) => request(`/api/projects/${checkId(id)}/revisions`),
+  patch: (id, payload) =>
+    request(`/api/projects/${checkId(id)}/patch`, { method: "POST", body: JSON.stringify(payload) }),
+  getExportUrl: (id) => `${API_BASE}/api/projects/${checkId(id)}/export`
 };
 
-// ─── Legacy (unauthenticated generation) ─────────────────────────────────────
+// ─── Live Mock API Client ────────────────────────────────────────────────────
+export const mockApi = {
+  call: async (projectId, method, path, body = null) => {
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    const url = `${API_BASE}/api/mock/${projectId}${cleanPath}`;
+    const start = performance.now();
+    const res = await fetch(url, {
+      method: method.toUpperCase(),
+      headers: { "Content-Type": "application/json" },
+      body: body && method.toUpperCase() !== "GET" ? JSON.stringify(body) : undefined
+    });
+    const durationMs = Math.round(performance.now() - start);
+    const contentType = res.headers.get("content-type") || "";
+    const data = contentType.includes("application/json") ? await res.json() : await res.text();
+    return {
+      status: res.status,
+      ok: res.ok,
+      data,
+      durationMs,
+      headers: {
+        isMock: res.headers.get("x-inframind-mock") === "true",
+        blueprintRoute: res.headers.get("x-blueprint-route") || "",
+        mockEngine: res.headers.get("x-mock-engine") || ""
+      }
+    };
+  }
+};
+
+// ─── Legacy / Fallback ───────────────────────────────────────────────────────
 export const generateApi = {
   generate: (specification) =>
     request("/api/generate", { method: "POST", body: JSON.stringify({ specification }) }),

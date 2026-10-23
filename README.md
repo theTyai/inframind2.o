@@ -1,6 +1,32 @@
-# InfraMind 2.0 — AI System Architecture & Planning Platform
+# InfraMind — The Compiler + IDE for System Design
 
-InfraMind turns plain-English application requirements into developer-ready system blueprints. It bridges the gap between high-level product ideation and low-level software implementation by producing architectural topologies, MongoDB models, REST API contracts with status codes, OpenAPI 3.1 definitions, and downloadable MERN code scaffolds.
+> **"The AI proposes, the compiler verifies, the human approves."**
+
+InfraMind transforms plain-English application requirements into a verified, versioned engineering blueprint. Unlike chatbot wrappers that generate unchecked diagrams, InfraMind operates as a **System Design IDE with a deterministic consistency compiler**: AI proposals are compiled into a canonical typed dependency graph, validated against strict invariants, self-healed through an automated repair loop, simulated for change impact, and served as live mock APIs before code is scaffolded.
+
+---
+
+## ⚡ The 3 Pillars of InfraMind
+
+1. **System Design IDE Workspace:**
+   - **Activity Bar:** 5 primary workspaces (Overview, Architecture, Change Impact, Validate, Build & History).
+   - **Artifact Explorer:** Hierarchical tree of Requirements, Actors, Components, Collections, Endpoints, Workflows, and Tests.
+   - **Connected Canvas:** Causal Dependency Graph, Mermaid System Topology, Mongoose Models, REST Contracts.
+   - **Contextual Inspector:** Selected node deep dive with direct & transitive blast radius, linked tests, and grounded trace citing artifact IDs.
+   - **Problems Panel:** VS Code-style drawer with live compiler findings; clicking any problem immediately focuses the affected artifact in the canvas.
+   - **Command Palette (`⌘K` / `Ctrl+K`):** Instant fuzzy search and execution across artifacts, routes, and actions.
+   - **Status Bar:** Real-time revision counter, compiler invariant score, and live mock server status.
+
+2. **Deterministic Design Consistency Compiler:**
+   - Evaluates 6 rule suites: Graph Integrity, Traceability, API Collisions, Data Reference Integrity, Workflow Guard Paths, and Security & Reliability.
+   - **Self-Healing Auto-Repair Loop:** Automatically detects and repairs orphaned graph edges, duplicate route signatures, and unauthenticated sensitive endpoints.
+   - Grounded verification status: every rule is `verified`, `unverified`, or `not_evaluated` — never fabricated.
+
+3. **Engineering Reliability & Live Workflows:**
+   - **Staged SSE Generation Pipeline:** 8 discrete stages streamed live over Server-Sent Events with progress logs.
+   - **Patch-Based Refinement & Change Impact:** Calculates blast radius, generates structured diffs, and requires explicit review before sealing immutable revisions.
+   - **Live Mock API Server:** Mounts blueprint OpenAPI routes at `/api/mock/:projectId/*`, returning simulated JSON payloads with true HTTP status codes.
+   - **Dogfooding OpenAPI Documentation:** InfraMind's own API documented via OpenAPI 3.1 at `/docs`.
 
 ---
 
@@ -14,18 +40,14 @@ InfraMind turns plain-English application requirements into developer-ready syst
 6. [Complete User Journey & Application Flow](#6-complete-user-journey--application-flow)
 7. [Authentication & Authorization Flow](#7-authentication--authorization-flow)
 8. [Database Models & Ownership Rules](#8-database-models--ownership-rules)
-9. [OpenRouter AI Synthesis Pipeline](#9-openrouter-ai-synthesis-pipeline)
+9. [Staged Generation Pipeline & Auto-Repair](#9-staged-generation-pipeline--auto-repair)
 10. [Prebuilt Demo Fixtures (Zero AI Calls)](#10-prebuilt-demo-fixtures-zero-ai-calls)
-11. [Environment Variables Reference](#11-environment-variables-reference)
-12. [Local Installation & Startup](#12-local-installation--startup)
-13. [Database Setup & Resilience](#13-database-setup--resilience)
-14. [API Route Documentation](#14-api-route-documentation)
-15. [Automated Testing & Quality Checks](#15-automated-testing--quality-checks)
-16. [Production Build & Deployment](#16-production-build--deployment)
-17. [Security & Secret Management](#17-security--secret-management)
-18. [Troubleshooting & FAQs](#18-troubleshooting--faqs)
-19. [Screenshots & Visual Tour](#19-screenshots--visual-tour)
-20. [Roadmap & Contribution Guide](#20-roadmap--contribution-guide)
+11. [Live Mock API Server & Testing](#11-live-mock-api-server--testing)
+12. [Environment Variables Reference](#12-environment-variables-reference)
+13. [Local Installation & Startup](#13-local-installation--startup)
+14. [Automated Testing & CI Pipeline](#14-automated-testing--ci-pipeline)
+15. [Production Build & Deployment](#15-production-build--deployment)
+16. [Security & Secret Management](#16-security--secret-management)
 
 ---
 
