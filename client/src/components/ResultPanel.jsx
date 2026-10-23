@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Boxes, Database, Workflow, Code2, Download, Copy, Check, AlertCircle,
   ShieldCheck, FileJson, CheckCircle2, AlertTriangle, Users, ListChecks,
@@ -113,6 +113,15 @@ export default function ResultPanel({
   useEffect(() => {
     if (onNavigateWorkspace) onNavigateWorkspace(workspace);
   }, [workspace, onNavigateWorkspace]);
+
+  // Auto-expand Problems drawer ONLY when new errors appear after a user action (stay collapsed on load)
+  const prevErrorCountRef = useRef(errorCount);
+  useEffect(() => {
+    if (errorCount > 0 && errorCount > prevErrorCountRef.current) {
+      setIsProblemsOpen(true);
+    }
+    prevErrorCountRef.current = errorCount;
+  }, [errorCount, setIsProblemsOpen]);
 
   // Initialize selected artifact on first load
   useEffect(() => {
@@ -316,9 +325,16 @@ export default function ResultPanel({
             width={explorerWidth}
             canonicalModel={canonicalModel}
             selectedArtifactId={selectedArtifact?.id}
+            activeWorkspace={workspace}
+            scaffoldFiles={result.scaffold || []}
+            selectedFilePath={copiedPath}
             onSelectArtifact={(item) => {
               setSelectedArtifact(item);
               setIsInspectorOpen(true);
+            }}
+            onSelectFile={(file) => {
+              setBuildSubView("scaffold");
+              copyFile(file);
             }}
           />
         )}
@@ -802,6 +818,7 @@ export default function ResultPanel({
             selectedArtifact={selectedArtifact}
             canonicalModel={canonicalModel}
             compilerFindings={compilerFindings}
+            onSelectArtifact={(item) => setSelectedArtifact(item)}
             onSimulateImpact={(artifact) => {
               setSelectedImpactTarget(artifact);
               setWorkspace("impact");
