@@ -33,11 +33,10 @@ export default function IdeCommandPalette({
     const list = [];
 
     // System Navigation Actions
-    list.push({ id: "cmd-overview", title: "Go to: Overview Workspace", type: "action", icon: Layers, action: () => onSelectWorkspace("overview") });
-    list.push({ id: "cmd-arch", title: "Go to: Architecture Graph & System Map", type: "action", icon: Cpu, action: () => onSelectWorkspace("architecture") });
-    list.push({ id: "cmd-impact", title: "Go to: Change Impact Ripple Simulator", type: "action", icon: Activity, action: () => onSelectWorkspace("impact") });
-    list.push({ id: "cmd-validate", title: "Go to: Invariant Compiler & Validate", type: "action", icon: ShieldCheck, action: () => onSelectWorkspace("validate") });
-    list.push({ id: "cmd-build", title: "Go to: Build, History & Mock Server", type: "action", icon: Code2, action: () => onSelectWorkspace("build") });
+    list.push({ id: "cmd-system", title: "Go to System (Architecture & Data Lens)", type: "action", icon: Cpu, action: () => { onClose(); onSelectWorkspace("system"); } });
+    list.push({ id: "cmd-spec", title: "Go to Spec (Requirements, Decisions & APIs)", type: "action", icon: Layers, action: () => { onClose(); onSelectWorkspace("spec"); } });
+    list.push({ id: "cmd-analyze", title: "Go to Analyze (Checks, Threats & Change Impact)", type: "action", icon: ShieldCheck, action: () => { onClose(); onSelectWorkspace("analyze"); } });
+    list.push({ id: "cmd-build", title: "Go to Build (Files, Live Mock Server & OpenAPI)", type: "action", icon: Code2, action: () => { onClose(); onSelectWorkspace("build"); } });
 
     if (onNavigateGlobal) {
       list.push({ id: "cmd-nav-projects", title: "App: Go to My Projects", type: "action", icon: FolderKanban, action: () => { onClose(); onNavigateGlobal("projects"); } });

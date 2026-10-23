@@ -359,27 +359,6 @@ export default function NewBlueprint({
           </div>
         )}
       </form>
-
-      {/* ─── Feature Capability Indicators ──────────────────────────────────── */}
-      <div className="features-bento-grid" style={{ marginTop: 24 }}>
-        <article className="bento-item">
-          <div className="bento-icon"><Workflow size={18} /></div>
-          <h3>System Topology</h3>
-          <p>Micro-frontends, API gateways, service boundaries, and MongoDB storage tiers.</p>
-        </article>
-
-        <article className="bento-item">
-          <div className="bento-icon"><Database size={18} /></div>
-          <h3>MongoDB Models & REST</h3>
-          <p>Typed document schemas, index strategies, and OpenAPI 3.1 endpoint contracts.</p>
-        </article>
-
-        <article className="bento-item">
-          <div className="bento-icon"><Code2 size={18} /></div>
-          <h3>MERN Starter Scaffold</h3>
-          <p>Instant download of a modular Node.js/Express starter codebase in a clean ZIP.</p>
-        </article>
-      </div>
     </div>
   );
 }

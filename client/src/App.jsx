@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Boxes, Sparkles, Workflow, Database, Code2, Plus, FolderKanban,
   Settings as SettingsIcon, Layers3, LogOut, ShieldCheck, ChevronRight,
-  LogIn, User, ArrowRight
+  LogIn, User, ArrowRight, X
 } from "lucide-react";
 import { useAuth } from "./context/AuthContext.jsx";
 import { projectsApi, generateApi } from "./lib/api.js";
@@ -20,9 +20,10 @@ export default function App() {
   const { user, loading: authLoading, signout } = useAuth();
 
   // Navigation State
-  const [view, setView] = useState("landing"); // "landing" | "dashboard" | "projects" | "new" | "project" | "demo" | "settings"
+  const [view, setView] = useState("landing"); // "landing" | "projects" | "new" | "project" | "demo" | "settings"
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [activeDemoId, setActiveDemoId] = useState("commerceflow");
+  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
 
   // Projects State
   const [projects, setProjects] = useState([]);
@@ -70,13 +71,13 @@ export default function App() {
       const hash = window.location.hash.replace(/^#/, "");
       if (!hash || hash === "landing") {
         if (!user) setView("landing");
-        else setView("dashboard");
-      } else if (hash === "dashboard") {
-        setView("dashboard");
-      } else if (hash === "projects") {
+        else setView("projects");
+      } else if (hash === "dashboard" || hash === "projects") {
         setView("projects");
       } else if (hash === "new") {
         setView("new");
+      } else if (hash === "templates") {
+        setView("demo");
       } else if (hash === "settings") {
         setView("settings");
       } else if (hash.startsWith("demo-")) {
@@ -96,20 +97,20 @@ export default function App() {
   }, [user]);
 
   function navigateTo(newView, hashParam = "") {
-    setView(newView);
-    if (newView === "landing") {
+    let target = newView;
+    if (target === "dashboard") target = "projects";
+    setView(target);
+    if (target === "landing") {
       window.location.hash = "landing";
-    } else if (newView === "dashboard") {
-      window.location.hash = "dashboard";
-    } else if (newView === "projects") {
+    } else if (target === "projects") {
       window.location.hash = "projects";
-    } else if (newView === "new") {
+    } else if (target === "new") {
       window.location.hash = "new";
-    } else if (newView === "settings") {
+    } else if (target === "settings") {
       window.location.hash = "settings";
-    } else if (newView === "demo") {
+    } else if (target === "demo") {
       window.location.hash = `demo-${hashParam || activeDemoId}`;
-    } else if (newView === "project") {
+    } else if (target === "project") {
       window.location.hash = `project-${hashParam || activeProjectId}`;
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -327,7 +328,13 @@ export default function App() {
       <>
         <LandingPage
           user={user}
-          onStartBuilding={() => navigateTo(user ? "dashboard" : "new")}
+          onStartBuilding={(promptText) => {
+            if (promptText && typeof promptText === "string" && promptText.trim()) {
+              setDraftSpecification(promptText.trim());
+              setDraftProjectName("Untitled Project");
+            }
+            navigateTo("new");
+          }}
           onExploreDemo={handleExploreDemo}
           onOpenAuth={handleOpenAuth}
           onUseAsTemplate={handleUseDemoAsTemplate}
@@ -404,31 +411,31 @@ export default function App() {
       <aside className="sidebar">
         <div
           className="brand"
-          onClick={() => navigateTo(user ? "dashboard" : "landing")}
+          onClick={() => navigateTo(user ? "projects" : "landing")}
           style={{ cursor: "pointer" }}
         >
           <span className="brand-mark"><Boxes size={20} /></span>
           <span>InfraMind<span className="brand-period">.</span></span>
         </div>
 
+        <button
+          className="sidebar-new-btn"
+          onClick={() => navigateTo("new")}
+        >
+          <Plus size={15} /> New Blueprint
+        </button>
+
         <div className="sidebar-label">WORKSPACE</div>
 
         <button
-          className={`side-link ${view === "dashboard" ? "active" : ""}`}
-          onClick={() => navigateTo("dashboard")}
-        >
-          <Workflow size={16} /> Overview
-        </button>
-
-        <button
-          className={`side-link ${view === "projects" ? "active" : ""}`}
+          className={`side-link ${view === "projects" || view === "dashboard" ? "active" : ""}`}
           onClick={() => navigateTo("projects")}
         >
-          <FolderKanban size={16} /> My Projects
+          <FolderKanban size={16} /> Projects
           {projects.length > 0 && (
             <span style={{
-              marginLeft: "auto", fontSize: 10, background: "#1c2438",
-              padding: "2px 6px", borderRadius: 4, color: "#a5b4ce"
+              marginLeft: "auto", fontSize: 10, background: "rgba(255, 255, 255, 0.08)",
+              padding: "1px 6px", borderRadius: 4, color: "var(--text-secondary)"
             }}>
               {projects.length}
             </span>
@@ -436,17 +443,10 @@ export default function App() {
         </button>
 
         <button
-          className={`side-link ${view === "new" ? "active" : ""}`}
-          onClick={() => navigateTo("new")}
-        >
-          <Plus size={16} /> New Blueprint
-        </button>
-
-        <button
           className={`side-link ${view === "demo" ? "active" : ""}`}
           onClick={() => navigateTo("demo", activeDemoId)}
         >
-          <Layers3 size={16} /> Example Demos
+          <Layers3 size={16} /> Templates
         </button>
 
         <button
@@ -457,56 +457,44 @@ export default function App() {
         </button>
 
         <div className="sidebar-bottom">
-          <div className="secure-card">
-            <ShieldCheck size={17} />
-            <div>
-              <strong>Secure Architecture</strong>
-              <span>API key & JWT protected on server</span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            {user ? (
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "8px 10px", background: "#121622", borderRadius: 8, border: "1px solid #232b3c"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <span className="avatar">
-                    {(user.displayName || user.email || "U").slice(0, 2).toUpperCase()}
-                  </span>
-                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    <strong style={{ fontSize: 11, color: "#e1e7f6", display: "block" }}>
-                      {user.displayName || "Architect"}
-                    </strong>
-                    <span style={{ fontSize: 9, color: "#748299" }}>{user.email}</span>
-                  </div>
+          {user ? (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "8px 10px", background: "var(--bg-surface-2)", borderRadius: 8, border: "1px solid var(--border-subtle)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span className="avatar">
+                  {(user.displayName || user.email || "U").slice(0, 2).toUpperCase()}
+                </span>
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <strong style={{ fontSize: 11, color: "var(--text-primary)", display: "block" }}>
+                    {user.displayName || "Architect"}
+                  </strong>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{user.email}</span>
                 </div>
-                <button
-                  onClick={async () => {
-                    await signout();
-                    navigateTo("landing");
-                  }}
-                  title="Sign out"
-                  style={{
-                    background: "transparent", border: "none", color: "#8a96aa",
-                    padding: 4, display: "grid", placeItems: "center"
-                  }}
-                >
-                  <LogOut size={14} />
-                </button>
               </div>
-            ) : (
               <button
-                className="secondary-button full-width"
-                onClick={() => handleOpenAuth("signin")}
+                onClick={async () => {
+                  await signout();
+                  navigateTo("landing");
+                }}
+                title="Sign out"
+                style={{
+                  background: "transparent", border: "none", color: "var(--text-muted)",
+                  padding: 4, display: "grid", placeItems: "center", cursor: "pointer"
+                }}
               >
-                <LogIn size={14} /> Sign In to Save
+                <LogOut size={14} />
               </button>
-            )}
-          </div>
-
-          <div className="sidebar-version">INFRAMIND · v2.0 ENTERPRISE</div>
+            </div>
+          ) : (
+            <button
+              className="secondary-button full-width"
+              onClick={() => handleOpenAuth("signin")}
+            >
+              <LogIn size={14} /> Sign In
+            </button>
+          )}
         </div>
       </aside>
 
@@ -515,25 +503,24 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumbs">
             <span
-              onClick={() => navigateTo("dashboard")}
-              style={{ cursor: "pointer", color: "#8b98b0" }}
+              onClick={() => navigateTo(user ? "projects" : "landing")}
+              style={{ cursor: "pointer", color: "var(--text-muted)" }}
             >
-              Workspace
+              InfraMind
             </span>
             <b>/</b>
             <strong>
-              {view === "dashboard" && "Overview"}
-              {view === "projects" && "My Projects"}
+              {(view === "projects" || view === "dashboard") && "Projects"}
               {view === "new" && "New Blueprint"}
               {view === "project" && (activeProject?.name || "Blueprint Workspace")}
-              {view === "demo" && `Interactive Demo (${activeDemoId})`}
-              {view === "settings" && "Account & Settings"}
+              {view === "demo" && `Templates (${DEMO_PROJECTS[activeDemoId]?.name || activeDemoId})`}
+              {view === "settings" && "Settings"}
             </strong>
           </div>
 
           <div className="topbar-right">
             <span className="status">
-              <i /> {user ? "MongoDB Synced · OpenRouter AI" : "Guest Mode (Local Session)"}
+              <i /> {user ? "MongoDB Synced · OpenRouter AI" : "Local Browser Session"}
             </span>
             {user ? (
               <span
@@ -555,25 +542,33 @@ export default function App() {
           </div>
         </header>
 
-        {/* View Router */}
-        <div style={{ marginTop: 24 }}>
-          {view === "dashboard" && (
-            <Dashboard
-              user={user}
-              projects={projects}
-              loadingProjects={loadingProjects}
-              onOpenProject={(id) => {
-                setActiveProjectId(id);
-                navigateTo("project", id);
-              }}
-              onCreateNew={() => navigateTo("new")}
-              onExploreDemo={handleExploreDemo}
-              onDuplicateProject={handleDuplicateProject}
-              onDeleteProject={handleDeleteProject}
-            />
-          )}
+        {/* Slim dismissible guest banner for unauthenticated users */}
+        {!user && !guestBannerDismissed && (
+          <div className="guest-banner">
+            <div className="guest-banner-content">
+              <span className="guest-banner-dot" />
+              <span>
+                <strong>Guest Session</strong> — Blueprints are stored locally in your browser. Sign in to save and sync across devices.
+              </span>
+            </div>
+            <div className="guest-banner-actions">
+              <button className="guest-banner-btn" onClick={() => handleOpenAuth("signin")}>
+                Sign In
+              </button>
+              <button
+                className="guest-banner-close"
+                onClick={() => setGuestBannerDismissed(true)}
+                aria-label="Dismiss guest notice"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
-          {view === "projects" && (
+        {/* View Router */}
+        <div style={{ marginTop: 16 }}>
+          {(view === "projects" || view === "dashboard") && (
             <MyProjects
               projects={projects}
               loading={loadingProjects}
@@ -585,6 +580,7 @@ export default function App() {
               onDuplicateProject={handleDuplicateProject}
               onDeleteProject={handleDeleteProject}
               onRenameProject={handleRenameProject}
+              onExploreTemplates={() => navigateTo("demo")}
             />
           )}
 
@@ -615,7 +611,7 @@ export default function App() {
           {view === "demo" && (
             <DemoViewer
               demoId={activeDemoId}
-              onBack={() => navigateTo("dashboard")}
+              onBack={() => navigateTo("projects")}
               onUseAsTemplate={handleUseDemoAsTemplate}
               onCustomize={handleCustomizeDemo}
             />
@@ -632,8 +628,8 @@ export default function App() {
         </div>
 
         <footer className="footer">
-          <span>InfraMind 2.0</span>
-          <span>Engineered for developers who think in systems.</span>
+          <span>InfraMind</span>
+          <span>System Architecture & Verification Studio</span>
           <span>OpenRouter AI · Review blueprints before production</span>
         </footer>
       </main>
@@ -641,14 +637,7 @@ export default function App() {
       {/* Mobile Bottom Navigation Bar for phones & tablets */}
       <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
         <button
-          className={`mobile-nav-item ${view === "dashboard" ? "active" : ""}`}
-          onClick={() => navigateTo("dashboard")}
-        >
-          <Workflow size={16} />
-          <span>Overview</span>
-        </button>
-        <button
-          className={`mobile-nav-item ${view === "projects" ? "active" : ""}`}
+          className={`mobile-nav-item ${view === "projects" || view === "dashboard" ? "active" : ""}`}
           onClick={() => navigateTo("projects")}
         >
           <FolderKanban size={16} />
@@ -666,7 +655,7 @@ export default function App() {
           onClick={() => navigateTo("demo", activeDemoId)}
         >
           <Layers3 size={16} />
-          <span>Demos</span>
+          <span>Templates</span>
         </button>
         <button
           className={`mobile-nav-item ${view === "settings" ? "active" : ""}`}

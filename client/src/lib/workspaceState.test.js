@@ -21,14 +21,14 @@ describe("Workspace State & Panel Logic", () => {
     assert.equal(WORKSPACE_PANEL_DEFAULTS.overview.explorer, false);
     assert.equal(WORKSPACE_PANEL_DEFAULTS.overview.inspector, false);
 
-    // Architecture: explorer open for navigation
-    assert.equal(WORKSPACE_PANEL_DEFAULTS.architecture.explorer, true);
+    // Architecture starts on the picture, without a side index
+    assert.equal(WORKSPACE_PANEL_DEFAULTS.architecture.explorer, false);
 
-    // Impact: inspector closed to prioritize 3-pane ripple simulator
+    // Impact: inspector closed so the simulator stays the only focus
     assert.equal(WORKSPACE_PANEL_DEFAULTS.impact.inspector, false);
 
-    // Build: explorer open to show file tree
-    assert.equal(WORKSPACE_PANEL_DEFAULTS.build.explorer, true);
+    // Build: starter code is the canvas; index opens on demand
+    assert.equal(WORKSPACE_PANEL_DEFAULTS.build.explorer, false);
   });
 
   it("safely falls back for localStorage dimension retrieval", () => {
@@ -128,25 +128,26 @@ describe("Workspace State & Panel Logic", () => {
 
   it("verifies canvas occupies >= 55% screen width at 1440px with Explorer and Inspector open", () => {
     const screenWidth = 1440;
-    const activityBarW = 48;
+    const journeyBarIsHorizontal = true;
+    const activityBarW = journeyBarIsHorizontal ? 0 : 48;
     const defaultExplorerW = 260;
     const defaultInspectorW = 320;
 
     // Both panels open
     const canvasWidthBothOpen = screenWidth - activityBarW - defaultExplorerW - defaultInspectorW;
     const ratioBothOpen = canvasWidthBothOpen / screenWidth;
-    assert.equal(canvasWidthBothOpen, 812);
+    assert.equal(canvasWidthBothOpen, 860);
     assert.ok(ratioBothOpen >= 0.55, `Expected canvas ratio >= 55% at 1440px, got ${(ratioBothOpen * 100).toFixed(1)}%`);
 
-    // Per-workspace default: Overview & Change Impact (panels closed)
+    // Default: all stages keep side panels closed
     const canvasWidthPanelsClosed = screenWidth - activityBarW;
     const ratioPanelsClosed = canvasWidthPanelsClosed / screenWidth;
     assert.ok(ratioPanelsClosed > 0.95, `Expected canvas ratio > 95% when panels closed, got ${(ratioPanelsClosed * 100).toFixed(1)}%`);
 
-    // Architecture initial state (Explorer open, Inspector closed until selection)
-    const canvasWidthArchInitial = screenWidth - activityBarW - defaultExplorerW;
+    // Architecture initial state (picture-first, no explorer)
+    const canvasWidthArchInitial = screenWidth - activityBarW;
     const ratioArchInitial = canvasWidthArchInitial / screenWidth;
-    assert.ok(ratioArchInitial > 0.75, `Expected architecture initial canvas > 75%, got ${(ratioArchInitial * 100).toFixed(1)}%`);
+    assert.ok(ratioArchInitial > 0.95, `Expected architecture initial canvas > 95%, got ${(ratioArchInitial * 100).toFixed(1)}%`);
   });
 
   it("verifies responsive viewport widths and drawer overlay mechanics", () => {

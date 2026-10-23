@@ -1,8 +1,30 @@
 import { useState, useMemo } from "react";
 import {
   FolderKanban, Search, Plus, Clock, Copy, Trash2, Edit2, ArrowRight,
-  Boxes, AlertCircle, X, Check
+  Boxes, AlertCircle, X, Check, Download, Layers3, Sparkles
 } from "lucide-react";
+
+function getDomainTag(project) {
+  const text = `${project.name || ""} ${project.specification || ""} ${project.blueprint?.summary || ""}`.toLowerCase();
+  if (text.includes("food") || text.includes("restaurant") || text.includes("delivery") || text.includes("order") || text.includes("commerce")) return "E-Commerce";
+  if (text.includes("book") || text.includes("appointment") || text.includes("slot") || text.includes("calendar")) return "Booking & Calendar";
+  if (text.includes("tenant") || text.includes("saas") || text.includes("board") || text.includes("kanban")) return "Multi-Tenant SaaS";
+  if (text.includes("course") || text.includes("learn") || text.includes("student") || text.includes("quiz")) return "EdTech LMS";
+  if (text.includes("payment") || text.includes("wallet") || text.includes("fintech") || text.includes("crypto")) return "FinTech & Payments";
+  return "System Architecture";
+}
+
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return "recently";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffSec = Math.floor((now - date) / 1000);
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 export default function MyProjects({
   projects = [],
@@ -11,9 +33,11 @@ export default function MyProjects({
   onDuplicateProject,
   onDeleteProject,
   onRenameProject,
+  onExploreTemplates,
   loading = false
 }) {
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("updated"); // "updated" | "name" | "nodes"
   const [renameTarget, setRenameTarget] = useState(null); // { id, name }
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
   const [newName, setNewName] = useState("");
@@ -26,6 +50,22 @@ export default function MyProjects({
       (p.blueprint?.summary || p.specification || "").toLowerCase().includes(q)
     );
   }, [projects, search]);
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "name") {
+        return (a.name || a.projectName || "").localeCompare(b.name || b.projectName || "");
+      }
+      if (sortBy === "nodes") {
+        const aNodes = a.blueprint?.architecture?.nodes?.length || 0;
+        const bNodes = b.blueprint?.architecture?.nodes?.length || 0;
+        return bNodes - aNodes;
+      }
+      const aTime = new Date(a.updatedAt || 0).getTime();
+      const bTime = new Date(b.updatedAt || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filtered, sortBy]);
 
   function startRename(project) {
     setRenameTarget(project);
@@ -47,13 +87,24 @@ export default function MyProjects({
     }
   }
 
+  function handleExportJson(project) {
+    const data = JSON.stringify(project.blueprint || project, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(project.name || "blueprint").toLowerCase().replace(/[^a-z0-9_-]/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="my-projects-container">
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
       <div className="section-title-row">
         <div>
-          <h2>My System Blueprints</h2>
-          <p>Manage, version, duplicate, and export your application designs.</p>
+          <h2>Projects</h2>
+          <p>System architectures, domain models, and executable scaffolds.</p>
         </div>
         <button className="primary-button hero-cta" onClick={onCreateNew}>
           <Plus size={16} /> New Blueprint
@@ -71,42 +122,64 @@ export default function MyProjects({
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
-            <button className="icon-clear-search" onClick={() => setSearch("")}>
+            <button className="icon-clear-search" onClick={() => setSearch("")} aria-label="Clear search">
               <X size={14} />
             </button>
           )}
         </div>
+
+        <select
+          className="projects-sort-select"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          aria-label="Sort projects"
+        >
+          <option value="updated">Sort: Last updated</option>
+          <option value="name">Sort: Name (A-Z)</option>
+          <option value="nodes">Sort: Node count</option>
+        </select>
+
         <div className="projects-count-badge">
-          {filtered.length} {filtered.length === 1 ? "project" : "projects"}
+          {sorted.length} {sorted.length === 1 ? "project" : "projects"}
         </div>
       </div>
 
       {/* ─── Projects List ──────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="loading-projects-state">
-          <span className="spinner" /> Loading projects from database…
+        <div className="loading-skeleton-grid">
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <div className="empty-projects-card">
           <div className="empty-icon"><FolderKanban size={28} /></div>
-          <h4>{search ? "No matching projects found" : "No saved projects yet"}</h4>
+          <h4>{search ? "No matching blueprints found" : "No blueprints yet"}</h4>
           <p>
             {search
-              ? `No projects matched "${search}". Try searching for another keyword or clear the search.`
-              : "Start by generating a blueprint from plain-English requirements."}
+              ? `No blueprints matched "${search}". Try searching for another keyword or clear the search.`
+              : "Describe your system in plain English or start from a production-grade template."}
           </p>
-          <button className="primary-button" onClick={onCreateNew}>
-            <Plus size={15} /> Create Blueprint
-          </button>
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button className="primary-button" onClick={onCreateNew}>
+              <Plus size={15} /> New Blueprint
+            </button>
+            {onExploreTemplates && (
+              <button className="secondary-button" onClick={onExploreTemplates}>
+                <Layers3 size={15} /> Browse Templates
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="projects-grid">
-          {filtered.map((project) => {
+          {sorted.map((project) => {
             const id = project._id || project.id;
             const name = project.name || project.projectName || "Untitled System";
-            const summary = project.blueprint?.summary || project.specification?.slice(0, 160) || "No summary.";
+            const summary = project.blueprint?.summary || project.specification?.slice(0, 160) || "No summary provided.";
             const versionsCount = project.versions?.length || 1;
-            const updated = new Date(project.updatedAt || Date.now()).toLocaleDateString();
+            const relativeTime = formatRelativeTime(project.updatedAt);
+            const domain = getDomainTag(project);
 
             return (
               <div className="project-card" key={id}>
@@ -114,13 +187,21 @@ export default function MyProjects({
                   <div className="project-title-group">
                     <span className="project-icon"><Boxes size={18} /></span>
                     <div>
-                      <h4>{name}</h4>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <h4>{name}</h4>
+                        <span className="domain-tag">{domain}</span>
+                      </div>
                       <span className="project-updated">
-                        <Clock size={11} /> Updated {updated}
+                        <Clock size={11} /> Updated {relativeTime}
                       </span>
                     </div>
                   </div>
-                  <span className="version-tag">v{versionsCount}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span className="health-badge">
+                      <span className="health-dot" /> Valid
+                    </span>
+                    <span className="version-tag">v{versionsCount}</span>
+                  </div>
                 </div>
 
                 <p className="project-desc">{summary}</p>
@@ -138,6 +219,13 @@ export default function MyProjects({
                   </button>
 
                   <div className="project-actions-group">
+                    <button
+                      className="icon-action-btn"
+                      title="Export blueprint JSON"
+                      onClick={() => handleExportJson(project)}
+                    >
+                      <Download size={14} />
+                    </button>
                     <button
                       className="icon-action-btn"
                       title="Rename project"

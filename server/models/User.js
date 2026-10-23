@@ -26,8 +26,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-
 // Never store or log the raw password
 userSchema.methods.verifyPassword = async function (candidate) {
   return bcrypt.compare(candidate, this.passwordHash);

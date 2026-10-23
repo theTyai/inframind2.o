@@ -15,13 +15,17 @@ export const isMacPlatform = () => {
 
 export const getShortcutModifier = () => (isMacPlatform() ? "⌘" : "Ctrl");
 
-// Per-workspace panel visibility defaults (prevents visual clutter)
+// Keep side panels closed until the user asks. One idea on the canvas.
 export const WORKSPACE_PANEL_DEFAULTS = {
+  system: { explorer: false, inspector: false },
+  spec: { explorer: false, inspector: false },
+  analyze: { explorer: false, inspector: false },
+  build: { explorer: false, inspector: false },
+  // Backward compatibility keys
   overview: { explorer: false, inspector: false },
-  architecture: { explorer: true, inspector: false }, // inspector opens when node selected
-  impact: { explorer: false, inspector: false },     // leaves 3-pane ripple simulator uncluttered
-  validate: { explorer: false, inspector: false },   // inspector opens when finding clicked
-  build: { explorer: true, inspector: false }        // explorer shows file tree in build workspace
+  architecture: { explorer: false, inspector: false },
+  impact: { explorer: false, inspector: false },
+  validate: { explorer: false, inspector: false }
 };
 
 const STORAGE_KEYS = {
@@ -54,20 +58,29 @@ export function setStoredNumber(key, value) {
   }
 }
 
-export function useWorkspaceState({ initialWorkspace = "overview", canonicalModel = null } = {}) {
+export function useWorkspaceState({ initialWorkspace = "system", canonicalModel = null } = {}) {
   const isMac = useMemo(() => isMacPlatform(), []);
   const modKey = useMemo(() => (isMac ? "⌘" : "Ctrl"), [isMac]);
 
-  // Active workspace (Overview, Architecture, Impact, Validate, Build)
+  // Active workspace (system, spec, analyze, build)
   const [workspace, setWorkspaceState] = useState(() => {
     try {
       const hash = window.location.hash.replace(/^#/, "");
       const match = hash.match(/ws=([a-z0-9_-]+)/i);
-      if (match && match[1]) return match[1];
+      if (match && match[1]) {
+        const raw = match[1].toLowerCase();
+        if (raw === "overview" || raw === "architecture") return "system";
+        if (raw === "validate" || raw === "impact") return "analyze";
+        return raw;
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_WORKSPACE);
-      if (saved && WORKSPACE_PANEL_DEFAULTS[saved]) return saved;
+      if (saved && WORKSPACE_PANEL_DEFAULTS[saved]) {
+        if (saved === "overview" || saved === "architecture") return "system";
+        if (saved === "validate" || saved === "impact") return "analyze";
+        return saved;
+      }
     } catch {}
-    return initialWorkspace;
+    return initialWorkspace === "overview" ? "system" : initialWorkspace;
   });
 
   // Panel Open / Closed States

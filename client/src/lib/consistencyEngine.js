@@ -251,6 +251,63 @@ export function runCompilerChecks(canonicalModel) {
     });
   }
 
+  // Check: Every entity is touched by at least one endpoint
+  const unreferencedEntities = entities.filter((entity) => {
+    return !apis.some((api) => {
+      const matchPath = (api.path || "").toLowerCase().includes(entity.name.toLowerCase());
+      const matchRef = api.entityRef === entity.id;
+      return matchPath || matchRef;
+    });
+  });
+
+  if (unreferencedEntities.length > 0) {
+    addFinding({
+      ruleId: "RULE_DATA_ENTITY_ENDPOINT_COVERAGE",
+      category: RULE_CATEGORIES.DATA_CONSISTENCY,
+      severity: "warning",
+      title: "Unreferenced Data Entities",
+      explanation: `${unreferencedEntities.length} MongoDB collection(s) have no declared API endpoint reading or writing them.`,
+      affectedArtifacts: unreferencedEntities.map((e) => e.id),
+      evidence: unreferencedEntities.map((e) => e.name).join(", "),
+      remediation: "Add REST endpoints to query or mutate this entity, or document internal-only usage."
+    });
+  } else if (entities.length > 0) {
+    addFinding({
+      ruleId: "RULE_DATA_ENTITY_ENDPOINT_COVERAGE",
+      category: RULE_CATEGORIES.DATA_CONSISTENCY,
+      severity: "pass",
+      title: "All Collections Mapped to Endpoints",
+      explanation: "Every modeled MongoDB collection is queried or mutated by at least one API endpoint.",
+      evidence: `${entities.length} collection(s) verified.`
+    });
+  }
+
+  // Check: Auth flow has register as well as login
+  const hasLoginRoute = apis.some((a) => /(login|signin)/i.test(a.path));
+  const hasRegisterRoute = apis.some((a) => /(register|signup)/i.test(a.path));
+
+  if (hasLoginRoute && !hasRegisterRoute) {
+    addFinding({
+      ruleId: "RULE_SEC_AUTH_REGISTER_LOGIN",
+      category: RULE_CATEGORIES.SECURITY_RELIABILITY,
+      severity: "warning",
+      title: "Missing User Registration Route",
+      explanation: "A login route was declared, but no registration or signup endpoint (/api/auth/register) was modeled.",
+      affectedArtifacts: apis.filter((a) => /(login|signin)/i.test(a.path)).map((a) => a.id),
+      evidence: apis.filter((a) => /(login|signin)/i.test(a.path)).map((a) => a.path).join(", "),
+      remediation: "Add POST /api/auth/register or document federated SSO / admin-provisioned identity model."
+    });
+  } else if (hasLoginRoute && hasRegisterRoute) {
+    addFinding({
+      ruleId: "RULE_SEC_AUTH_REGISTER_LOGIN",
+      category: RULE_CATEGORIES.SECURITY_RELIABILITY,
+      severity: "pass",
+      title: "Authentication Lifecycle Complete",
+      explanation: "Both user registration and login endpoints are properly modeled.",
+      evidence: "Registration and login routes confirmed."
+    });
+  }
+
   // ─── 5. Workflow Consistency Checks ──────────────────────────────────────
   const workflows = canonicalModel.workflows || [];
   const workflowsMissingFailures = workflows.filter(

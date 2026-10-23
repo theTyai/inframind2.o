@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Lock, Mail, User, ArrowRight, ShieldCheck, AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -11,6 +11,22 @@ export default function AuthModal({ isOpen, onClose, initialMode = "signin", onS
   const [loading, setLoading] = useState(false);
 
   const { signin, signup } = useAuth();
+
+  useEffect(() => {
+    setMode(initialMode);
+    setError("");
+  }, [initialMode, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

@@ -2,51 +2,44 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeToCanonicalModel } from "./canonicalModel.js";
 import { DEMO_PROJECTS } from "../data/demoProjects/index.js";
+import { WORKSPACE_TABS, WORKSPACE_STAGES, getWorkspaceStage, normalizeWorkspaceId } from "./workspaceJourney.js";
 
-test("Workspace Navigation Mapping: all 14 legacy tabs map into the 5 primary workspaces", () => {
-  const legacyTabs = [
-    "overview",
-    "architecture",
-    "causal",
-    "impact",
-    "workflows",
-    "threats",
-    "api_flows",
-    "database",
-    "apis",
-    "checks",
-    "diffs",
-    "reality",
-    "scaffold",
-    "openapi"
+test("Workspace tabs present exactly 4 primary workspaces with plain-language labels", () => {
+  assert.equal(WORKSPACE_TABS.length, 4);
+  assert.deepEqual(
+    WORKSPACE_TABS.map((stage) => stage.id),
+    ["system", "spec", "analyze", "build"]
+  );
+  assert.deepEqual(
+    WORKSPACE_TABS.map((stage) => stage.label),
+    ["System", "Spec", "Analyze", "Build"]
+  );
+  assert.equal(getWorkspaceStage("system").defaultSubView, "components");
+  assert.equal(getWorkspaceStage("spec").defaultSubView, "all");
+  assert.equal(getWorkspaceStage("analyze").defaultSubView, "checks");
+  assert.equal(getWorkspaceStage("build").defaultSubView, "scaffold");
+});
+
+test("Workspace Navigation Mapping: all legacy tabs map cleanly into the 4 canonical workspaces", () => {
+  const legacyMappings = [
+    { input: "overview", expected: "system" },
+    { input: "architecture", expected: "system" },
+    { input: "map", expected: "system" },
+    { input: "system", expected: "system" },
+    { input: "spec", expected: "spec" },
+    { input: "requirements", expected: "spec" },
+    { input: "story", expected: "spec" },
+    { input: "analyze", expected: "analyze" },
+    { input: "impact", expected: "analyze" },
+    { input: "validate", expected: "analyze" },
+    { input: "checks", expected: "analyze" },
+    { input: "threats", expected: "analyze" },
+    { input: "build", expected: "build" },
+    { input: "scaffold", expected: "build" }
   ];
 
-  const workspaceMap = {
-    overview: { workspace: "overview", subView: "all" },
-    architecture: { workspace: "architecture", subView: "map" },
-    causal: { workspace: "architecture", subView: "dependencies" },
-    database: { workspace: "architecture", subView: "data_apis" },
-    apis: { workspace: "architecture", subView: "data_apis" },
-    impact: { workspace: "impact", subView: "simulator" },
-    checks: { workspace: "validate", subView: "checks" },
-    threats: { workspace: "validate", subView: "threats" },
-    workflows: { workspace: "validate", subView: "workflows" },
-    api_flows: { workspace: "validate", subView: "api_flows" },
-    scaffold: { workspace: "build", subView: "scaffold" },
-    openapi: { workspace: "build", subView: "openapi" },
-    reality: { workspace: "build", subView: "reality" },
-    diffs: { workspace: "build", subView: "history" }
-  };
-
-  const allowedWorkspaces = new Set(["overview", "architecture", "impact", "validate", "build"]);
-
-  legacyTabs.forEach(tab => {
-    const target = workspaceMap[tab];
-    assert.ok(target, `Legacy tab '${tab}' must have an assigned workspace mapping.`);
-    assert.ok(
-      allowedWorkspaces.has(target.workspace),
-      `Target workspace '${target.workspace}' for '${tab}' must be one of the 5 canonical workspaces.`
-    );
+  legacyMappings.forEach(({ input, expected }) => {
+    assert.equal(normalizeWorkspaceId(input), expected, `Workspace '${input}' should normalize to '${expected}'`);
   });
 });
 
@@ -63,7 +56,7 @@ test("Structured Overview Normalization: handles missing fields, empty arrays, a
 
   // Overview normalization logic
   const overview = minimalBlueprint.overview || {};
-  const personas = overview.targetUsers?.length ? overview.targetUsers : (minimalBlueprint.roles || []).map(r => r.name);
+  const personas = overview.targetUsers?.length ? overview.targetUsers : (minimalBlueprint.roles || []).map((r) => r.name);
   assert.ok(Array.isArray(personas));
   assert.equal(personas.length, 0);
 
@@ -89,7 +82,7 @@ test("Graph Bounding Box & Auto-fit calculation engine produces non-negative val
       return { minX: 0, minY: 0, maxX: 800, maxY: 500, width: 800, height: 500 };
     }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    nodes.forEach(pos => {
+    nodes.forEach((pos) => {
       minX = Math.min(minX, pos.x);
       minY = Math.min(minY, pos.y);
       maxX = Math.max(maxX, pos.x + pos.width);
@@ -147,7 +140,7 @@ test("Verified Save Status Indicator: correctly categorizes cloud, local, and pe
 test("Demo Fixtures Compatibility: all 4 demo fixtures render cleanly with structured overview", () => {
   assert.equal(DEMO_PROJECTS.length, 4);
 
-  DEMO_PROJECTS.forEach(demo => {
+  DEMO_PROJECTS.forEach((demo) => {
     const fixture = demo.fixture;
     assert.ok(fixture.projectName, `Demo ${demo.id} must have projectName`);
     assert.ok(fixture.architecture?.nodes?.length > 0, `Demo ${demo.id} must have architecture nodes`);

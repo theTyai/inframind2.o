@@ -462,5 +462,10 @@ export function normalizeToCanonicalModel(blueprint = {}) {
     ];
   }
 
+  normalized.graph = {
+    nodes: normalized.components,
+    edges: normalized.dependencies
+  };
+
   return normalized;
 }

@@ -6,8 +6,7 @@ const revisionSchema = new mongoose.Schema(
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
-      required: true,
-      index: true
+      required: true
     },
     versionNumber: {
       type: Number,

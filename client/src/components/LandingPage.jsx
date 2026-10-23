@@ -1,139 +1,244 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Boxes, Sparkles, Workflow, Database, Code2, ArrowRight, ShieldCheck,
   Layers3, CheckCircle2, LockKeyhole, Cpu, Terminal, FileJson, History,
   Users, Check, ExternalLink, ChevronDown, Activity, Play, RefreshCw,
-  GitBranch, Server, Zap, Radio
+  GitBranch, Server, Zap, Radio, CheckSquare, Layers, Lock, Search, FileCode
 } from "lucide-react";
 import { DEMO_PROJECTS } from "../data/demoProjects/index.js";
+import { normalizeToCanonicalModel } from "../lib/canonicalModel.js";
+import { runCompilerChecks } from "../lib/consistencyEngine.js";
+import SystemDiagram from "./system/SystemDiagram.jsx";
+import SortedSystemDiagram from "./system/SortedSystemDiagram.jsx";
 
-export default function LandingPage({ onStartBuilding, onExploreDemo, onOpenAuth, onUseAsTemplate, user }) {
-  // Active demo preset for the interactive hero preview
+// Derive realistic runtime technology based on component tier and name
+function getNodeRuntimeTech(node) {
+  if (node?.technology) return node.technology;
+  if (node?.tech) return node.tech;
+  const type = (node?.componentType || node?.type || "").toUpperCase();
+  const label = (node?.label || node?.name || "").toLowerCase();
+
+  if (type === "CLIENT" || label.includes("portal") || label.includes("app") || label.includes("web") || label.includes("client")) {
+    return "React 18 · Vite · CSS Modules";
+  }
+  if (type === "GATEWAY" || label.includes("gateway") || label.includes("proxy")) {
+    return "Node.js 20 · Express Gateway · JWT";
+  }
+  if (type === "DATABASE" || label.includes("mongo") || label.includes("db") || label.includes("store")) {
+    return "MongoDB 7.0 · Mongoose 8.8";
+  }
+  if (type === "CACHE" || label.includes("redis") || label.includes("cache")) {
+    return "Redis 7 · In-Memory Cache";
+  }
+  if (type === "QUEUE" || label.includes("queue") || label.includes("worker") || label.includes("kafka")) {
+    return "Node.js 20 · BullMQ · Worker Process";
+  }
+  if (type === "EXTERNAL" || label.includes("stripe") || label.includes("openai") || label.includes("mail")) {
+    return "HTTPS · External Provider API";
+  }
+  return "Node.js 20 · Express Service";
+}
+
+export default function LandingPage({
+  onStartBuilding,
+  onExploreDemo,
+  onOpenAuth,
+  onUseAsTemplate,
+  user
+}) {
+  // Hero input prompt state
+  const [heroPrompt, setHeroPrompt] = useState("");
+
+  // Preset for the interactive hero product shot
   const [selectedDemoId, setSelectedDemoId] = useState("commerceflow");
-  const [activePreviewTab, setActivePreviewTab] = useState("architecture");
-  const [selectedNodeId, setSelectedNodeId] = useState("gateway");
-  const [simulatingPacket, setSimulatingPacket] = useState(true);
+  const currentDemo = useMemo(() => {
+    return DEMO_PROJECTS.find((d) => d.id === selectedDemoId) || DEMO_PROJECTS[0];
+  }, [selectedDemoId]);
 
-  // Active step in "How it Works"
-  const [activeStep, setActiveStep] = useState(0);
+  // Canonical representation of current demo
+  const canonicalDemoModel = useMemo(() => {
+    return normalizeToCanonicalModel(currentDemo.fixture);
+  }, [currentDemo]);
+
+  const compilerFindings = useMemo(() => {
+    return runCompilerChecks(canonicalDemoModel);
+  }, [canonicalDemoModel]);
+
+  // Node selection state in product shot
+  const [selectedNode, setSelectedNode] = useState(null);
+  const activeNode = useMemo(() => {
+    if (selectedNode) return selectedNode;
+    const comps = canonicalDemoModel.components || [];
+    return comps.find((c) => c.tier === "service" || c.tier === "gateway") || comps[0] || null;
+  }, [selectedNode, canonicalDemoModel]);
+
+  // Pan and zoom state for product shot diagram
+  const [zoom, setZoom] = useState(0.85);
+  const [pan, setPan] = useState({ x: 20, y: 20 });
+
+  // Traceability demo active layer
+  const [activeTraceLayer, setActiveTraceLayer] = useState("endpoint");
 
   // Open FAQ item
   const [openFaq, setOpenFaq] = useState(0);
 
-  // Current demo fixture
-  const currentDemo = useMemo(() => {
-    return DEMO_PROJECTS.find(d => d.id === selectedDemoId) || DEMO_PROJECTS[0];
-  }, [selectedDemoId]);
+  // Quick-start prompt examples
+  const promptExamples = [
+    { label: "Multi-vendor marketplace", text: "Multi-vendor marketplace with customer and seller roles, inventory locking, and Stripe checkout." },
+    { label: "Appointment scheduling", text: "Appointment booking platform with calendar sync, provider availability slots, and SMS reminders." },
+    { label: "Analytics dashboard", text: "Real-time collaborative analytics dashboard with team permissions and event ingestion." },
+    { label: "B2B SaaS with teams", text: "Multi-tenant B2B SaaS with team invitations, role-based access control, and usage limits." }
+  ];
 
-  // Nodes for the interactive hero preview
-  const previewNodes = useMemo(() => {
-    const rawNodes = currentDemo.fixture.architecture?.nodes || [];
-    if (rawNodes.length >= 3) {
-      return rawNodes.slice(0, 4);
-    }
-    return [
-      { id: "client", label: "Client Application", type: "CLIENT", description: "React SPA & Mobile Web frontend", tech: "React 18 · Vite · Tailwind" },
-      { id: "gateway", label: "Edge API Gateway", type: "GATEWAY", description: "Reverse proxy, JWT verification, rate limiter", tech: "Express Router · Helmet · Zod" },
-      { id: "service", label: "Domain Engine", type: "SERVICE", description: "Core business logic, workflows, state machine", tech: "Node.js 20 · Clean Architecture" },
-      { id: "database", label: "MongoDB Atlas", type: "DATABASE", description: "Primary document store with ACID transactions", tech: "MongoDB 7.0 · Mongoose" }
-    ];
-  }, [currentDemo]);
-
-  // Selected node details
-  const activeNode = useMemo(() => {
-    return previewNodes.find(n => n.id === selectedNodeId) || previewNodes[1] || previewNodes[0];
-  }, [previewNodes, selectedNodeId]);
+  function handleHeroSubmit(e) {
+    e.preventDefault();
+    onStartBuilding(heroPrompt);
+  }
 
   function scrollToSection(id) {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
   }
 
-  const steps = [
-    {
-      num: "01",
-      title: "Describe your software concept",
-      desc: "Provide requirements in plain English — who the users are, their core journeys, business rules, and constraints.",
-      artifact: "Natural-Language Spec Ingestion",
-      details: "InfraMind parses intent without locking you into proprietary formats. Beginners can write a single paragraph; architects can provide exhaustive engineering briefs."
-    },
-    {
-      num: "02",
-      title: "Synthesize complete system topology",
-      desc: "OpenRouter AI decomposes goals into micro-frontends, edge gateways, service boundaries, and primary databases.",
-      artifact: "Verified Mermaid.js Topology",
-      details: "Produces clean component graphs with explicit edge protocols (HTTPS, WebSocket, Mongoose, gRPC) rather than ambiguous boxes."
-    },
-    {
-      num: "03",
-      title: "Run deterministic design validation",
-      desc: "Automated client-side rules check for orphaned nodes, unindexed foreign keys, duplicate API routes, and auth gaps.",
-      artifact: "6/6 Automated Integrity Checks",
-      details: "Client-side validation verifies that models, routes, and roles are mutually consistent before any code is generated."
-    },
-    {
-      num: "04",
-      title: "Export OpenAPI 3.1 & MERN starter ZIP",
-      desc: "One-click download of a runnable MERN boilerplate repository with models, routes, CORS setup, and Postman schemas.",
-      artifact: "Downloadable Starter ZIP & OpenAPI",
-      details: "Export directly to Swagger, Postman, or download a modular MERN boilerplate ready to run with `npm run dev`."
-    }
-  ];
-
   const faqs = [
     {
       q: "What technical artifacts does InfraMind generate?",
-      a: "InfraMind generates 6 core production artifacts: 1) Interactive Mermaid.js system topology diagrams, 2) Strongly typed MongoDB document models with indexes and references, 3) REST API endpoint contracts with request/response schemas and status codes, 4) Role-based access matrices (RBAC), 5) Step-by-step transaction workflows, and 6) A downloadable MERN starter ZIP scaffold."
+      a: "InfraMind generates 4 core production artifacts: 1) Verified system topology diagrams with protocol-labeled edges, 2) Strongly typed MongoDB document models with indexes and foreign references, 3) REST API endpoint contracts adhering to OpenAPI 3.1, and 4) A runnable MERN starter repository containing .env.example, package.json, and Express routes."
     },
     {
-      q: "Are the 4 prebuilt example demos real or simulated?",
-      a: "They are 100% genuine, production-grade static JSON fixtures bundled at build time. Browsing, inspecting, and navigating any of the 4 demos makes zero AI API calls and incurs zero network latency."
+      q: "Are the 4 prebuilt example demos real or mocked?",
+      a: "They are 100% genuine, static JSON fixtures bundled at build time. Browsing, inspecting, and navigating any of the 4 demos makes zero AI API calls and incurs zero network latency."
     },
     {
-      q: "Can I refine or branch an existing blueprint without losing progress?",
-      a: "Yes. When signed in, all projects are stored in your MongoDB database with full versioning. You can refine a specification to generate v2, v3, or duplicate a project to explore an alternative architecture path."
+      q: "How does the consistency compiler check for broken designs?",
+      a: "InfraMind runs an automated, deterministic client-side consistency engine. It asserts that every API endpoint references a declared service, every entity is touched by at least one route, authentication requirements are consistent across auth routes, and no orphaned nodes exist."
     },
     {
-      q: "How does InfraMind ensure API contracts and database schemas are valid?",
-      a: "Unlike raw LLM chats that frequently hallucinate non-existent foreign keys or broken routes, InfraMind runs a deterministic client-side validation engine (`analyzeBlueprint`) that verifies route uniqueness, foreign key targets, and component connectivity."
+      q: "Can I simulate architectural changes before modifying code?",
+      a: "Yes. In the Analyze workspace, the Change Impact Simulator lets you test migrations—such as switching from MongoDB to PostgreSQL or injecting a Redis caching tier—showing the exact blast radius and configuration diffs."
     },
     {
-      q: "Is my OpenRouter API key and prompt data kept secure?",
-      a: "Yes. All AI calls route through the server backend with encrypted environment variables. User authentication utilizes secure HttpOnly cookies, and sensitive credentials are never exposed in frontend bundles."
+      q: "Is prompt data or API keys exposed to the client?",
+      a: "No. Sensitive API keys and authentication sessions remain on the server with secure HttpOnly cookies. Client bundles only contain static assets and client-side analysis algorithms."
+    },
+    {
+      q: "What format is the exported code scaffold?",
+      a: "The scaffold is exported as a standard Node.js / Express / Mongoose codebase packaged in a clean ZIP file, with a root package.json and .env.example ready for local development with npm install and npm run dev."
     }
   ];
 
   return (
-    <div className="landing-container">
-      {/* ─── Section A: Sticky Navigation ────────────────────────────────────── */}
-      <header className="landing-nav" role="banner">
-        <div className="landing-nav-inner">
-          <div className="brand" onClick={() => scrollToSection("top")} style={{ cursor: "pointer" }} title="Back to top">
-            <span className="brand-mark"><Boxes size={18} /></span>
-            <span>InfraMind<span className="brand-period">.</span></span>
-            <span className="version-pill">v2.0</span>
+    <div className="landing-container" style={{ background: "var(--ide-bg-canvas, #090c13)", color: "var(--ide-text-primary, #f8fafc)" }}>
+      {/* ─── 1. Sticky Navigation Bar ─────────────────────────────────────────── */}
+      <header
+        className="landing-nav"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          background: "rgba(9, 12, 19, 0.92)",
+          backdropFilter: "blur(14px)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          height: 52
+        }}
+        role="banner"
+      >
+        <div
+          style={{
+            maxWidth: 1240,
+            margin: "0 auto",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 20px"
+          }}
+        >
+          {/* Logo & Brand */}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}
+            onClick={() => scrollToSection("hero")}
+          >
+            <span style={{ color: "var(--ide-accent, #8b7cff)", display: "flex", alignItems: "center" }}>
+              <Boxes size={20} />
+            </span>
+            <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc" }}>
+              InfraMind<span style={{ color: "var(--ide-accent, #8b7cff)" }}>.</span>
+            </span>
           </div>
 
-          <nav className="landing-nav-links" aria-label="Main Navigation">
-            <a href="#how-it-works" onClick={(e) => { e.preventDefault(); scrollToSection("how-it-works"); }}>How It Works</a>
-            <a href="#examples" onClick={(e) => { e.preventDefault(); scrollToSection("examples"); }}>Examples</a>
-            <a href="#features" onClick={(e) => { e.preventDefault(); scrollToSection("features"); }}>Features</a>
-            <a href="#preview" onClick={(e) => { e.preventDefault(); scrollToSection("preview"); }}>Live Preview</a>
-            <a href="#faq" onClick={(e) => { e.preventDefault(); scrollToSection("faq"); }}>FAQ</a>
+          {/* Center Navigation Links */}
+          <nav
+            style={{ display: "flex", alignItems: "center", gap: 24 }}
+            className="landing-nav-links"
+            aria-label="Main Navigation"
+          >
+            <a
+              href="#preview"
+              onClick={(e) => { e.preventDefault(); scrollToSection("preview"); }}
+              style={{ fontSize: 13, color: "var(--ide-text-secondary, #cbd5e1)", textDecoration: "none", transition: "color 0.15s" }}
+            >
+              Product
+            </a>
+            <a
+              href="#how-it-works"
+              onClick={(e) => { e.preventDefault(); scrollToSection("how-it-works"); }}
+              style={{ fontSize: 13, color: "var(--ide-text-secondary, #cbd5e1)", textDecoration: "none", transition: "color 0.15s" }}
+            >
+              How it works
+            </a>
+            <a
+              href="#traceability"
+              onClick={(e) => { e.preventDefault(); scrollToSection("traceability"); }}
+              style={{ fontSize: 13, color: "var(--ide-text-secondary, #cbd5e1)", textDecoration: "none", transition: "color 0.15s" }}
+            >
+              Traceability
+            </a>
+            <a
+              href="#templates"
+              onClick={(e) => { e.preventDefault(); scrollToSection("templates"); }}
+              style={{ fontSize: 13, color: "var(--ide-text-secondary, #cbd5e1)", textDecoration: "none", transition: "color 0.15s" }}
+            >
+              Templates
+            </a>
+            <a
+              href="https://github.com/theTyai/inframind2.o"
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 13, color: "var(--ide-text-secondary, #cbd5e1)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              GitHub <ExternalLink size={12} style={{ opacity: 0.7 }} />
+            </a>
           </nav>
 
-          <div className="landing-nav-actions">
+          {/* Right Action Buttons */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {user ? (
-              <button className="primary-button" onClick={onStartBuilding} aria-label="Go to workspace">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => onStartBuilding()}
+                style={{ height: 32, padding: "0 14px", fontSize: 13, fontWeight: 600 }}
+              >
                 Go to Workspace <ArrowRight size={13} />
               </button>
             ) : (
               <>
-                <button className="ghost-button" onClick={() => onOpenAuth("signin")} aria-label="Sign in">
-                  Sign In
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => onOpenAuth("signin")}
+                  style={{ height: 32, padding: "0 12px", fontSize: 13, color: "#94a3b8" }}
+                >
+                  Sign in
                 </button>
-                <button className="primary-button" onClick={onStartBuilding} aria-label="Get started free">
-                  Start Designing <ArrowRight size={13} />
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => onStartBuilding()}
+                  style={{ height: 32, padding: "0 14px", fontSize: 13, fontWeight: 600 }}
+                >
+                  Start designing
                 </button>
               </>
             )}
@@ -141,373 +246,826 @@ export default function LandingPage({ onStartBuilding, onExploreDemo, onOpenAuth
         </div>
       </header>
 
-      {/* ─── Section B: Hero Section ─────────────────────────────────────────── */}
-      <section className="landing-hero tech-grid-bg" id="top">
-        <div className="landing-hero-content">
-          <div className="eyebrow">
-            <span className="eyebrow-icon"><Sparkles size={12} /></span>
-            AI SYSTEM DESIGN & ARCHITECTURE WORKSPACE
-          </div>
-          <h1>
-            From a single idea to<br />
-            <span>a system you can build.</span>
-          </h1>
-          <p className="landing-hero-subtitle">
-            Explore your architecture, define your data, understand every workflow, and turn your
-            software idea into a developer-ready blueprint before writing application code.
-          </p>
-
-          <div className="landing-hero-ctas">
-            <button className="primary-button hero-cta" onClick={onStartBuilding}>
-              <Sparkles size={15} /> Start Designing Free <ArrowRight size={15} />
-            </button>
-            <button className="secondary-button hero-secondary-cta" onClick={() => scrollToSection("examples")}>
-              <Layers3 size={15} /> Explore 4 Prebuilt Demos
-            </button>
-          </div>
-
-          <div className="stack-pills">
-            <span><b className="pill-dot mongo" /> MongoDB</span>
-            <span><b className="pill-dot express" /> Express.js</span>
-            <span><b className="pill-dot react" /> React 18</span>
-            <span><b className="pill-dot node" /> Node.js</span>
-            <span><b className="pill-dot" style={{ background: "#8b7cff" }} /> OpenRouter</span>
-            <span><b className="pill-dot" style={{ background: "#53d7f4" }} /> OpenAPI 3.1</span>
-          </div>
+      {/* ─── 2. Hero Section with Direct Interactive Composer ─────────────────── */}
+      <section
+        id="hero"
+        style={{
+          padding: "72px 20px 48px",
+          maxWidth: 960,
+          margin: "0 auto",
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center"
+        }}
+      >
+        {/* Subtle eyebrow label */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "3px 10px",
+            borderRadius: 9999,
+            background: "rgba(139, 124, 255, 0.08)",
+            border: "1px solid rgba(139, 124, 255, 0.25)",
+            fontSize: 12,
+            color: "#c4b8ff",
+            marginBottom: 20
+          }}
+        >
+          <Sparkles size={12} /> System Design IDE
         </div>
 
-        {/* ─── Interactive Architecture Preview (Hero Centerpiece) ─────────── */}
-        <div className="landing-preview-wrapper" id="preview">
-          <div className="landing-preview-card">
-            <div className="preview-card-header">
-              <div className="preview-meta">
-                <span className="preview-dot green" />
-                <span className="preview-dot yellow" />
-                <span className="preview-dot red" />
-                <span className="preview-title">{currentDemo.name} Blueprint</span>
-                <span className="status-pill ok">
-                  <ShieldCheck size={11} /> 6/6 CHECKS PASS
-                </span>
+        {/* Main Headline */}
+        <h1
+          style={{
+            fontSize: "clamp(36px, 5.5vw, 58px)",
+            fontWeight: 700,
+            lineHeight: 1.1,
+            letterSpacing: "-0.03em",
+            color: "#f8fafc",
+            margin: "0 0 18px",
+            maxWidth: 780
+          }}
+        >
+          From a single idea to a{" "}
+          <span style={{ color: "var(--ide-accent, #8b7cff)" }}>system you can build</span>.
+        </h1>
+
+        {/* Subcopy */}
+        <p
+          style={{
+            fontSize: 16,
+            lineHeight: 1.6,
+            color: "var(--ide-text-secondary, #cbd5e1)",
+            margin: "0 auto 32px",
+            maxWidth: 620
+          }}
+        >
+          Synthesize verified topologies, typed MongoDB schemas, and REST contracts from natural language
+          before writing application code.
+        </p>
+
+        {/* Hero Interactive Composer Input */}
+        <form
+          onSubmit={handleHeroSubmit}
+          style={{
+            width: "100%",
+            maxWidth: 680,
+            background: "rgba(20, 24, 34, 0.8)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            borderRadius: 10,
+            padding: 8,
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginBottom: 14
+          }}
+        >
+          <textarea
+            value={heroPrompt}
+            onChange={(e) => setHeroPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                handleHeroSubmit(e);
+              }
+            }}
+            placeholder="Describe your application (e.g. multi-vendor marketplace with customer/seller roles, inventory lock, and Stripe checkout)…"
+            rows={3}
+            style={{
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              color: "#f8fafc",
+              fontSize: 14,
+              lineHeight: 1.5,
+              padding: "8px 10px",
+              resize: "none",
+              outline: "none",
+              fontFamily: "inherit"
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 8px",
+              borderTop: "1px solid rgba(255, 255, 255, 0.06)"
+            }}
+          >
+            <span style={{ fontSize: 11.5, color: "var(--ide-text-muted, #94a3b8)" }}>
+              Press <kbd style={{ padding: "1px 5px", background: "rgba(255,255,255,0.06)", borderRadius: 3, border: "1px solid rgba(255,255,255,0.1)", fontSize: 10 }}>⌘</kbd> + <kbd style={{ padding: "1px 5px", background: "rgba(255,255,255,0.06)", borderRadius: 3, border: "1px solid rgba(255,255,255,0.1)", fontSize: 10 }}>Enter</kbd>
+            </span>
+            <button
+              type="submit"
+              className="primary-button"
+              style={{
+                height: 32,
+                padding: "0 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6
+              }}
+            >
+              Start designing <ArrowRight size={13} />
+            </button>
+          </div>
+        </form>
+
+        {/* Quick-Start Example Chips */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap", marginBottom: 24 }}>
+          <span style={{ fontSize: 11.5, color: "var(--ide-text-muted, #94a3b8)", marginRight: 2 }}>Try:</span>
+          {promptExamples.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => setHeroPrompt(item.text)}
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: 9999,
+                padding: "3px 10px",
+                fontSize: 11.5,
+                color: "var(--ide-text-secondary, #cbd5e1)",
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Secondary link and quiet stack line */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <a
+            href="#preview"
+            onClick={(e) => { e.preventDefault(); scrollToSection("preview"); }}
+            style={{ fontSize: 13, color: "var(--ide-accent, #8b7cff)", textDecoration: "none", fontWeight: 500 }}
+          >
+            View live demo ↓
+          </a>
+          <span style={{ color: "rgba(255, 255, 255, 0.15)" }}>·</span>
+          <span style={{ fontSize: 12, color: "var(--ide-text-muted, #94a3b8)" }}>
+            Built with React 18 · Node.js 20 · MongoDB 7.0 · OpenAPI 3.1
+          </span>
+        </div>
+      </section>
+
+      {/* ─── 3. Centerpiece: Big Sorted Interactive System Architecture ───── */}
+      <section id="preview" style={{ maxWidth: 1240, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div
+          style={{
+            background: "rgba(14, 17, 26, 0.98)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            borderRadius: 14,
+            boxShadow: "0 28px 72px -12px rgba(0, 0, 0, 0.8), 0 0 40px -10px rgba(139, 124, 255, 0.15)",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column"
+          }}
+        >
+          {/* Window Header */}
+          <div
+            style={{
+              minHeight: 48,
+              padding: "8px 18px",
+              background: "rgba(20, 24, 36, 0.95)",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap"
+            }}
+          >
+            {/* Window controls & Title */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f56", display: "inline-block" }} />
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#ffbd2e", display: "inline-block" }} />
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#27c93f", display: "inline-block" }} />
               </div>
-
-              {/* Demo Preset Selector */}
-              <div className="preview-preset-chips">
-                <span style={{ fontSize: 11, color: "var(--text-muted)", marginRight: 4 }}>Presets:</span>
-                {DEMO_PROJECTS.map(d => (
-                  <button
-                    key={d.id}
-                    className={`preview-preset-btn ${selectedDemoId === d.id ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedDemoId(d.id);
-                      setSelectedNodeId("gateway");
-                    }}
-                    title={`Switch preview to ${d.name}`}
-                  >
-                    {d.name}
-                  </button>
-                ))}
-              </div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc" }}>
+                {currentDemo.name} · <span style={{ color: "var(--ide-accent, #8b7cff)" }}>Sorted Architecture Blueprint</span>
+              </span>
             </div>
 
-            {/* Preview Section Tabs */}
-            <div className="preview-card-tabs" role="tablist">
-              <button
-                role="tab"
-                aria-selected={activePreviewTab === "architecture"}
-                className={`preview-tab ${activePreviewTab === "architecture" ? "active" : ""}`}
-                onClick={() => setActivePreviewTab("architecture")}
-              >
-                <Workflow size={13} /> Architecture Flow
-              </button>
-              <button
-                role="tab"
-                aria-selected={activePreviewTab === "database"}
-                className={`preview-tab ${activePreviewTab === "database" ? "active" : ""}`}
-                onClick={() => setActivePreviewTab("database")}
-              >
-                <Database size={13} /> MongoDB Models ({currentDemo.fixture.database?.tables?.length || 0})
-              </button>
-              <button
-                role="tab"
-                aria-selected={activePreviewTab === "apis"}
-                className={`preview-tab ${activePreviewTab === "apis" ? "active" : ""}`}
-                onClick={() => setActivePreviewTab("apis")}
-              >
-                <Boxes size={13} /> REST Contracts ({currentDemo.fixture.apis?.length || 0})
-              </button>
-              <button
-                role="tab"
-                aria-selected={activePreviewTab === "scaffold"}
-                className={`preview-tab ${activePreviewTab === "scaffold" ? "active" : ""}`}
-                onClick={() => setActivePreviewTab("scaffold")}
-              >
-                <Code2 size={13} /> MERN Scaffold ({currentDemo.fixture.scaffold?.length || 0})
-              </button>
+            {/* Presets Switcher */}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              {DEMO_PROJECTS.map((demo) => (
+                <button
+                  key={demo.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDemoId(demo.id);
+                    setSelectedNode(null);
+                  }}
+                  style={{
+                    height: 28,
+                    padding: "0 12px",
+                    borderRadius: 5,
+                    fontSize: 12,
+                    fontWeight: selectedDemoId === demo.id ? 600 : 500,
+                    background: selectedDemoId === demo.id ? "rgba(139, 124, 255, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                    color: selectedDemoId === demo.id ? "#ffffff" : "#94a3b8",
+                    border: selectedDemoId === demo.id ? "1px solid rgba(139, 124, 255, 0.5)" : "1px solid rgba(255, 255, 255, 0.06)",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  {demo.name}
+                </button>
+              ))}
             </div>
 
-            {/* Preview Card Body */}
-            <div className="preview-card-body">
-              {activePreviewTab === "architecture" && (
-                <div className="preview-arch-canvas">
-                  {/* Left: Interactive Node Graph with animated data packets */}
-                  <div className="preview-arch-flow">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                        CLICK A NODE TO INSPECT COMPONENT
-                      </span>
-                      <button
-                        className="control-btn"
-                        onClick={() => setSimulatingPacket(!simulatingPacket)}
-                        title="Toggle data packet motion"
-                        style={{ fontSize: 10, padding: "2px 7px" }}
-                      >
-                        <Radio size={11} color={simulatingPacket ? "var(--accent-cyan)" : "var(--text-muted)"} />
-                        {simulatingPacket ? "Data Flow: Active" : "Data Flow: Paused"}
-                      </button>
-                    </div>
+            {/* Status chip */}
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#34d399",
+                background: "rgba(52, 211, 153, 0.1)",
+                border: "1px solid rgba(52, 211, 153, 0.25)",
+                padding: "3px 10px",
+                borderRadius: 9999,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}
+            >
+              <ShieldCheck size={13} /> 7/7 VERIFIED INTEGRITY
+            </span>
+          </div>
 
-                    <div className="preview-flow-row">
-                      {previewNodes.slice(0, 2).map((node, i) => (
-                        <div
-                          key={node.id || i}
-                          className={`interactive-node-card ${selectedNodeId === node.id ? "selected" : ""} ${simulatingPacket ? "active-pulse" : ""}`}
-                          onClick={() => setSelectedNodeId(node.id)}
-                        >
-                          <span className="node-type-label">{node.type || "COMPONENT"}</span>
-                          <h4 className="node-title">{node.label || node.name}</h4>
-                          <span className="node-subtext">{node.tech || "Service Worker"}</span>
-                        </div>
-                      ))}
-                    </div>
+          {/* Big Sorted Diagram Canvas */}
+          <SortedSystemDiagram
+            canonicalModel={canonicalDemoModel}
+            selectedDemoId={selectedDemoId}
+            currentDemo={currentDemo}
+            selectedNodeId={activeNode?.id}
+            onSelectNode={(comp) => setSelectedNode(comp)}
+            onOpenIde={() => onExploreDemo(currentDemo.id)}
+          />
 
-                    {/* Edge Connector */}
-                    <div className="arch-flow-edge">
-                      <div className="edge-line-glow">
-                        {simulatingPacket && <div className="packet-dot" />}
-                      </div>
-                      <span>HTTPS / REST · JWT Auth</span>
-                      <div className="edge-line-glow">
-                        {simulatingPacket && <div className="packet-dot" style={{ animationDelay: "1.2s" }} />}
-                      </div>
-                    </div>
+          {/* Window Footer */}
+          <div
+            style={{
+              height: 42,
+              padding: "0 20px",
+              background: "rgba(16, 20, 30, 0.9)",
+              borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between"
+            }}
+          >
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>
+              Deterministic MERN Blueprint: 4 sorted tiers, strict trust boundaries, and zero circular dependencies.
+            </span>
+            <button
+              type="button"
+              onClick={() => onExploreDemo(currentDemo.id)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--ide-accent, #8b7cff)",
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}
+            >
+              Open Full {currentDemo.name} IDE <ArrowRight size={13} />
+            </button>
+          </div>
+        </div>
+      </section>
 
-                    <div className="preview-flow-row">
-                      {previewNodes.slice(2, 4).map((node, i) => (
-                        <div
-                          key={node.id || i}
-                          className={`interactive-node-card ${selectedNodeId === node.id ? "selected" : ""}`}
-                          onClick={() => setSelectedNodeId(node.id)}
-                        >
-                          <span className="node-type-label">{node.type || "DATA LAYER"}</span>
-                          <h4 className="node-title">{node.label || node.name}</h4>
-                          <span className="node-subtext">{node.tech || "Storage Cluster"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+      {/* ─── 4. "How It Works" 3-Step Pipeline ───────────────────────────────── */}
+      <section id="how-it-works" style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px 80px" }}>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", textTransform: "uppercase" }}>
+            Deterministic Pipeline
+          </span>
+          <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc", margin: "6px 0 10px" }}>
+            How InfraMind turns ideas into code
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ide-text-secondary, #cbd5e1)", margin: 0 }}>
+            Every blueprint passes through 3 explicit verification stages.
+          </p>
+        </div>
 
-                  {/* Right: Component Inspector */}
-                  <div className="preview-node-inspector">
-                    <div className="inspector-head">
-                      <div>
-                        <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                          SELECTED COMPONENT
-                        </span>
-                        <h4 className="inspector-title">{activeNode.label || activeNode.name}</h4>
-                      </div>
-                      <span className="inspector-badge">{activeNode.type || "SERVICE"}</span>
-                    </div>
-
-                    <div className="inspector-field">
-                      <label>Responsibilities</label>
-                      <p>{activeNode.description || "Handles ingress traffic, request validation, and domain state."}</p>
-                    </div>
-
-                    <div className="inspector-field">
-                      <label>Runtime Technology</label>
-                      <code>{activeNode.tech || "Node.js 20 · Express · Mongoose"}</code>
-                    </div>
-
-                    <div className="inspector-field">
-                      <label>Security Boundary</label>
-                      <p>Authenticated via Bearer JWT, CORS restricted, rate-limited at 100 req/min.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activePreviewTab === "database" && (
-                <div className="schema-grid">
-                  {(currentDemo.fixture.database?.tables || []).slice(0, 3).map((table, i) => (
-                    <div className="schema-card" key={table.name || i}>
-                      <div className="schema-card-head">
-                        <div className="collection-icon"><Database size={14} /></div>
-                        <h3>{table.name}</h3>
-                        <span className="collection-index">{(table.columns || []).length} fields</span>
-                      </div>
-                      <div>
-                        {(table.columns || []).slice(0, 4).map((col, j) => (
-                          <div className="column-row" key={j}>
-                            <span className="field-name">{col.name}</span>
-                            {col.primaryKey && <span className="key-mark">PK</span>}
-                            {col.foreignKey && <span className="tag">FK ➔ {col.references || "Ref"}</span>}
-                            <span className="field-type">{col.type || "String"}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {activePreviewTab === "apis" && (
-                <div className="api-list">
-                  {(currentDemo.fixture.apis || []).slice(0, 3).map((api, i) => (
-                    <div className="api-card" key={i}>
-                      <div className="api-card-top">
-                        <div className="api-route">
-                          <span className={`method method-${(api.method || "GET").toLowerCase()}`}>{api.method}</span>
-                          <code>{api.path}</code>
-                        </div>
-                        <span className="status-codes">Status: {(api.statusCodes || ["200 OK"]).join(", ")}</span>
-                      </div>
-                      <p>{api.description || "Handles idempotent transaction processing."}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {activePreviewTab === "scaffold" && (
-                <div className="bento-mini-preview" style={{ maxHeight: 220, overflow: "auto" }}>
-                  <div style={{ color: "var(--accent-violet)", marginBottom: 8 }}>📁 Project Starter Architecture:</div>
-                  {(currentDemo.fixture.scaffold || []).slice(0, 6).map((file, i) => (
-                    <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid var(--border-subtle)" }}>
-                      <code>📄 {file.path}</code>
-                      <span style={{ float: "right", color: "var(--text-muted)", fontSize: 10 }}>MERN Ready</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          {/* Step 1: Describe */}
+          <div
+            style={{
+              background: "rgba(20, 24, 34, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", fontFamily: "monospace" }}>01 · DESCRIBE</span>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Requirements</span>
             </div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>
+              State requirements in plain English
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Specify user personas, business rules, transactional workflows, and external provider constraints.
+            </p>
+            {/* Real snippet artifact */}
+            <div style={{ marginTop: "auto", background: "#0a0d14", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 6, padding: "10px 12px", fontFamily: "monospace", fontSize: 11, color: "#38bdf8" }}>
+              <code>REQ-1: Customers can place idempotent orders and pay with Stripe.</code>
+            </div>
+          </div>
 
-            {/* Preview Card Footer */}
-            <div className="preview-card-footer">
-              <span>Try clicking the tabs or open the complete live demo workspace:</span>
-              <button
-                className="preview-footer-btn"
-                onClick={() => onExploreDemo(currentDemo.id)}
-              >
-                Launch Full {currentDemo.name} Blueprint <ArrowRight size={13} />
-              </button>
+          {/* Step 2: Verify */}
+          <div
+            style={{
+              background: "rgba(20, 24, 34, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#34d399", fontFamily: "monospace" }}>02 · VERIFY</span>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Compiler</span>
+            </div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>
+              Automated consistency compilation
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Deterministic client-side rules check route signatures, foreign key references, and auth coverage in &lt;10ms.
+            </p>
+            {/* Real snippet artifact */}
+            <div style={{ marginTop: "auto", background: "#0a0d14", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 6, padding: "10px 12px", fontSize: 11, color: "#34d399", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div>✓ 7/7 rules verified (0 errors, 0 warnings)</div>
+              <div style={{ fontSize: 10, color: "#94a3b8" }}>Route uniqueness · FK integrity · Auth alignment</div>
+            </div>
+          </div>
+
+          {/* Step 3: Ship */}
+          <div
+            style={{
+              background: "rgba(20, 24, 34, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", fontFamily: "monospace" }}>03 · SHIP</span>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Deliverables</span>
+            </div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>
+              Export OpenAPI 3.1 & MERN starter
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Download a complete MERN repository with root package.json and .env.example, ready for local execution.
+            </p>
+            {/* Real snippet artifact */}
+            <div style={{ marginTop: "auto", background: "#0a0d14", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 6, padding: "10px 12px", fontFamily: "monospace", fontSize: 11, color: "#cbd5e1" }}>
+              <div>📁 package.json · .env.example</div>
+              <div style={{ fontSize: 10, color: "#94a3b8" }}>📄 server/routes/orders.js · models/Order.js</div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── Section C: Product Capability Strip ─────────────────────────────── */}
-      <section className="capability-strip" aria-label="Core Capabilities">
-        <div className="capability-strip-inner">
-          <div className="capability-item">
-            <span className="capability-icon"><Workflow size={16} /></span>
-            <span>System Topologies</span>
+      {/* ─── 5. Traceability: Idea to Code Vertical Trace ──────────────────────── */}
+      <section id="traceability" style={{ maxWidth: 1000, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", textTransform: "uppercase" }}>
+            End-To-End Traceability
+          </span>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc", margin: "6px 0 8px" }}>
+            One continuous thread from user intent to code
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ide-text-secondary, #cbd5e1)", margin: 0 }}>
+            Every line of scaffolded code links directly back to an approved requirement.
+          </p>
+        </div>
+
+        {/* Vertical Connected Trace Diagram */}
+        <div
+          style={{
+            background: "rgba(16, 20, 28, 0.7)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 12,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16
+          }}
+        >
+          {/* Layer 1: Requirement */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <span style={{ width: 100, flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--cat-requirement, #a78bfa)", fontFamily: "monospace", paddingTop: 4 }}>
+              REQUIREMENT
+            </span>
+            <div style={{ flex: 1, background: "rgba(167, 139, 250, 0.08)", border: "1px solid rgba(167, 139, 250, 0.25)", borderRadius: 6, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>REQ-1: Idempotent Order Checkout</strong>
+                <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(167, 139, 250, 0.2)", color: "#c4b8ff" }}>Must have</span>
+              </div>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#cbd5e1" }}>
+                Customers can place checkout orders with duplicate-submission protection and secure Stripe payment processing.
+              </p>
+            </div>
           </div>
-          <div className="capability-item">
-            <span className="capability-icon"><Database size={16} /></span>
-            <span>MongoDB Models</span>
+
+          {/* Connector */}
+          <div style={{ marginLeft: 50, height: 16, borderLeft: "2px dashed rgba(255, 255, 255, 0.15)" }} />
+
+          {/* Layer 2: Topology */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <span style={{ width: 100, flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--cat-component, #38bdf8)", fontFamily: "monospace", paddingTop: 4 }}>
+              TOPOLOGY
+            </span>
+            <div style={{ flex: 1, background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 6, padding: "10px 14px" }}>
+              <strong style={{ fontSize: 13, color: "#f8fafc" }}>Component: Orders & Payment Service</strong>
+              <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+                <span>Tier: Internal Service</span>
+                <span>·</span>
+                <span>Runtime: Node.js 20 · Express Router</span>
+                <span>·</span>
+                <span>Protocol: HTTPS · REST</span>
+              </div>
+            </div>
           </div>
-          <div className="capability-item">
-            <span className="capability-icon"><Boxes size={16} /></span>
-            <span>REST API Contracts</span>
+
+          {/* Connector */}
+          <div style={{ marginLeft: 50, height: 16, borderLeft: "2px dashed rgba(255, 255, 255, 0.15)" }} />
+
+          {/* Layer 3: Data Model */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <span style={{ width: 100, flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--cat-entity, #34d399)", fontFamily: "monospace", paddingTop: 4 }}>
+              DATA MODEL
+            </span>
+            <div style={{ flex: 1, background: "rgba(52, 211, 153, 0.08)", border: "1px solid rgba(52, 211, 153, 0.25)", borderRadius: 6, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>Collection: Orders</strong>
+                <span style={{ fontSize: 11, fontFamily: "monospace", color: "#34d399" }}>8 fields · indexed</span>
+              </div>
+              <code style={{ fontSize: 11, color: "#cbd5e1", display: "block" }}>
+                userId: ObjectId (ref: User), totalAmount: Number, status: String, idempotencyKey: String (unique)
+              </code>
+            </div>
           </div>
-          <div className="capability-item">
-            <span className="capability-icon"><Users size={16} /></span>
-            <span>Roles & RBAC</span>
+
+          {/* Connector */}
+          <div style={{ marginLeft: 50, height: 16, borderLeft: "2px dashed rgba(255, 255, 255, 0.15)" }} />
+
+          {/* Layer 4: REST Contract */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <span style={{ width: 100, flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--cat-api, #60a5fa)", fontFamily: "monospace", paddingTop: 4 }}>
+              API CONTRACT
+            </span>
+            <div style={{ flex: 1, background: "rgba(96, 165, 250, 0.08)", border: "1px solid rgba(96, 165, 250, 0.25)", borderRadius: 6, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "rgba(96, 165, 250, 0.2)", color: "#93c5fd", fontFamily: "monospace" }}>POST</span>
+                <code style={{ fontSize: 12.5, color: "#f8fafc" }}>/api/v1/orders</code>
+                <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>201 Created</span>
+              </div>
+              <span style={{ fontSize: 11.5, color: "#cbd5e1" }}>
+                Auth: Bearer JWT · Header: Idempotency-Key · Writes to: Orders collection
+              </span>
+            </div>
           </div>
-          <div className="capability-item">
-            <span className="capability-icon"><Layers3 size={16} /></span>
-            <span>State Workflows</span>
-          </div>
-          <div className="capability-item">
-            <span className="capability-icon"><Code2 size={16} /></span>
-            <span>MERN Starters</span>
+
+          {/* Connector */}
+          <div style={{ marginLeft: 50, height: 16, borderLeft: "2px dashed rgba(255, 255, 255, 0.15)" }} />
+
+          {/* Layer 5: Code Scaffold */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <span style={{ width: 100, flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", fontFamily: "monospace", paddingTop: 4 }}>
+              SCAFFOLD
+            </span>
+            <div style={{ flex: 1, background: "rgba(139, 124, 255, 0.08)", border: "1px solid rgba(139, 124, 255, 0.25)", borderRadius: 6, padding: "10px 14px" }}>
+              <strong style={{ fontSize: 13, color: "#f8fafc" }}>server/routes/orders.js &amp; server/models/Order.js</strong>
+              <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "#cbd5e1" }}>
+                Auto-generated Express handler with Mongoose schema, validation middleware, and unit test stub.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── Section D: Interactive Prebuilt Demo Gallery ───────────────────── */}
-      <section className="landing-section" id="examples">
-        <div className="section-header-centered">
-          <span className="section-kicker">BUNDLED FIXTURES · ZERO AI CALLS</span>
-          <h2>Explore production blueprints across diverse domains</h2>
-          <p>
-            Browse real system designs with zero AI API costs or latency.
-            Inspect topology diagrams, document schemas, and REST endpoints directly.
+      {/* ─── 6. Feature Bento Grid (3 Rows, 0 Empty Cells) ───────────────────── */}
+      <section id="features" style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", textTransform: "uppercase" }}>
+            The Complete IDE Suite
+          </span>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc", margin: "6px 0 8px" }}>
+            Everything needed to plan serious systems
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ide-text-secondary, #cbd5e1)", margin: 0 }}>
+            Precision developer tools designed for technical founders and engineering architects.
           </p>
         </div>
 
-        <div className="demo-cards-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+          {/* Row 1: Span-2 + Span-1 = 3 cols */}
+          <div
+            style={{
+              gridColumn: "span 2",
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(139, 124, 255, 0.15)", color: "var(--ide-accent, #8b7cff)", display: "grid", placeItems: "center" }}>
+                <Workflow size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>Hub-and-Spoke System Topologies</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              The API Server acts as the central hub connecting frontend clients, database tiers, and external AI providers with explicit protocol annotations (HTTPS REST, Mongoose persist, LLM stream).
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#38bdf8" }}>
+              Client [React] ── HTTPS ──▶ API Server [Express] ── Mongoose ──▶ Database [MongoDB]
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(52, 211, 153, 0.15)", color: "#34d399", display: "grid", placeItems: "center" }}>
+                <ShieldCheck size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>Compiler Checks</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              7 deterministic consistency rules run client-side to verify route uniqueness, foreign key targets, and auth coverage.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "8px 12px", fontSize: 11, color: "#34d399" }}>
+              ✓ 7/7 compiler rules passing with zero hallucinations
+            </div>
+          </div>
+
+          {/* Row 2: Span-1 + Span-2 = 3 cols */}
+          <div
+            style={{
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", display: "grid", placeItems: "center" }}>
+                <Database size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>MongoDB Schema Models</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Typed document schemas with primary keys, ObjectId foreign refs, nullability constraints, and index recommendations.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "#cbd5e1" }}>
+              <code>OrderSchema: {`{ userId: ObjectId, total: Number }`}</code>
+            </div>
+          </div>
+
+          <div
+            style={{
+              gridColumn: "span 2",
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(96, 165, 250, 0.15)", color: "#60a5fa", display: "grid", placeItems: "center" }}>
+                <FileJson size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>OpenAPI 3.1 &amp; REST Contracts</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Standardized HTTP methods, request bodies, and expected status codes. Export clean OpenAPI 3.1 JSON directly to Swagger UI, Postman, or SDK generators.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#60a5fa" }}>
+              POST /api/v1/orders ➔ 201 Created (schema validated) · Bearer JWT
+            </div>
+          </div>
+
+          {/* Row 3: Span-1 + Span-1 + Span-1 = 3 cols (100% full, 0 empty cells!) */}
+          <div
+            style={{
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(139, 124, 255, 0.15)", color: "var(--ide-accent, #8b7cff)", display: "grid", placeItems: "center" }}>
+                <Code2 size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>MERN Starter Codebase</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Guaranteed root package.json and .env.example with modular Express routes and Mongoose models in a downloadable ZIP.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#cbd5e1" }}>
+              📦 Downloadable ZIP scaffold
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", display: "grid", placeItems: "center" }}>
+                <Play size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>Live Mock API Server</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Execute real HTTP requests against your declared endpoints inside the browser before any backend code is implemented.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#38bdf8" }}>
+              ⚡ Interactive Send &amp; Response panel
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "rgba(18, 22, 32, 0.7)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 10,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: "rgba(251, 191, 36, 0.15)", color: "#fbbf24", display: "grid", placeItems: "center" }}>
+                <GitBranch size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#f8fafc" }}>Semantic Version Diffs</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+              Branch, compare, and track revisions over time with automatic Design Decision Record (DDR) generation across changes.
+            </p>
+            <div style={{ marginTop: "auto", background: "#0a0c12", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#fbbf24" }}>
+              🔀 v1 ➔ v2 revision changelog
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 7. Compact Neutral Templates Gallery ───────────────────────────── */}
+      <section id="templates" style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", textTransform: "uppercase" }}>
+            Production Presets
+          </span>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc", margin: "6px 0 8px" }}>
+            Explore prebuilt blueprints across diverse domains
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ide-text-secondary, #cbd5e1)", margin: 0 }}>
+            Every template is a static JSON fixture bundled at build time with zero network latency.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
           {DEMO_PROJECTS.map((demo) => {
-            const nodeCount = demo.fixture.architecture?.nodes?.length || 4;
-            const collectionCount = demo.fixture.database?.tables?.length || 3;
-            const endpointCount = demo.fixture.apis?.length || 6;
-            const fileCount = demo.fixture.scaffold?.length || 6;
+            const canonical = normalizeToCanonicalModel(demo.fixture);
+            const compCount = canonical.components?.length || 4;
+            const tableCount = canonical.entities?.length || 4;
+            const apiCount = canonical.apis?.length || 6;
 
             return (
               <div
-                className="demo-card"
                 key={demo.id}
-                style={{ borderTop: `3px solid ${demo.color}` }}
+                style={{
+                  background: "rgba(18, 22, 32, 0.7)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: 10,
+                  padding: 22,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 14,
+                  transition: "all 0.15s ease"
+                }}
               >
-                <div className="demo-card-head">
-                  <span className="demo-icon-bubble">{demo.icon}</span>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                   <div>
-                    <h3>{demo.name}</h3>
-                    <span className="demo-domain-tag">{demo.domain}</span>
+                    <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>
+                      {demo.name}
+                    </h3>
+                    <span style={{ fontSize: 11.5, color: "var(--ide-accent, #8b7cff)", background: "rgba(139, 124, 255, 0.1)", padding: "2px 8px", borderRadius: 4 }}>
+                      {demo.domain || demo.tagline || "Architecture"}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, color: "#34d399", background: "rgba(52, 211, 153, 0.1)", border: "1px solid rgba(52, 211, 153, 0.25)", padding: "2px 6px", borderRadius: 4 }}>
+                    0 AI Calls
+                  </span>
+                </div>
+
+                <p style={{ margin: 0, fontSize: 12.5, color: "#94a3b8", lineHeight: 1.5 }}>
+                  {demo.description}
+                </p>
+
+                {/* Derived Counts Strip */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    background: "#0c0f16",
+                    border: "1px solid rgba(255, 255, 255, 0.06)",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    textAlign: "center"
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 13, color: "#f8fafc", display: "block" }}>{compCount}</strong>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>Components</span>
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 13, color: "#f8fafc", display: "block" }}>{tableCount}</strong>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>Collections</span>
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 13, color: "#f8fafc", display: "block" }}>{apiCount}</strong>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>REST APIs</span>
                   </div>
                 </div>
 
-                <p className="demo-card-tagline">{demo.tagline}</p>
-                <p className="demo-card-desc">{demo.description}</p>
-
-                <div className="demo-stats-strip">
-                  <div>
-                    <strong>{nodeCount}</strong>
-                    <span>Nodes</span>
-                  </div>
-                  <div>
-                    <strong>{collectionCount}</strong>
-                    <span>Models</span>
-                  </div>
-                  <div>
-                    <strong>{endpointCount}</strong>
-                    <span>APIs</span>
-                  </div>
-                  <div>
-                    <strong>{fileCount}</strong>
-                    <span>Files</span>
-                  </div>
-                </div>
-
-                <div className="demo-card-actions">
+                {/* Card Actions */}
+                <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
                   <button
-                    className="primary-button full-width"
+                    type="button"
+                    className="primary-button"
                     onClick={() => onExploreDemo(demo.id)}
+                    style={{ flex: 1, height: 32, fontSize: 12.5, fontWeight: 600 }}
                   >
-                    Explore Blueprint <ArrowRight size={13} />
+                    Explore Blueprint
                   </button>
-                  {onUseAsTemplate && (
-                    <button
-                      className="secondary-button full-width"
-                      onClick={() => onUseAsTemplate(demo)}
-                      title="Copy specification to build your own version"
-                    >
-                      Use as Starting Point
-                    </button>
-                  )}
-                </div>
-
-                <div className="demo-zero-ai-note">
-                  <ShieldCheck size={12} /> Static Fixture · 0 AI Requests
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => onUseAsTemplate(demo)}
+                    style={{ flex: 1, height: 32, fontSize: 12.5 }}
+                  >
+                    Use as Template
+                  </button>
                 </div>
               </div>
             );
@@ -515,180 +1073,119 @@ export default function LandingPage({ onStartBuilding, onExploreDemo, onOpenAuth
         </div>
       </section>
 
-      {/* ─── Section E: 4-Step Animated Pipeline ("How It Works") ───────────── */}
-      <section className="landing-section" id="how-it-works">
-        <div className="section-header-centered">
-          <span className="section-kicker">ENGINEERING WORKFLOW</span>
-          <h2>From concept to verifiable architecture in 4 steps</h2>
-          <p>A structured pipeline that turns natural language into production specifications.</p>
-        </div>
+      {/* ─── 8. "Built Like Production Software" Developer Proof ────────────── */}
+      <section style={{ maxWidth: 1000, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div
+          style={{
+            background: "rgba(16, 20, 30, 0.7)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 12,
+            padding: 32
+          }}
+        >
+          <div style={{ marginBottom: 20 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#34d399", textTransform: "uppercase" }}>
+              Verifiable Architecture
+            </span>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: "#f8fafc", margin: "6px 0 6px" }}>
+              Built like production software
+            </h2>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
+              InfraMind enforces real engineering standards, not decorative diagrams.
+            </p>
+          </div>
 
-        <div className="steps-pipeline-grid">
-          {steps.map((step, idx) => (
-            <div
-              className="step-card"
-              key={idx}
-              onClick={() => setActiveStep(idx)}
-              style={{
-                borderColor: activeStep === idx ? "var(--accent-violet)" : undefined,
-                cursor: "pointer"
-              }}
-            >
-              <div className="step-num">
-                <span>{step.num}</span>
-                <span className="status-pill info" style={{ fontSize: 9 }}>{step.artifact}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+            <div style={{ padding: 14, background: "#0c0f16", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <CheckSquare size={14} color="#34d399" />
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>Client-Side Rule Compiler</strong>
               </div>
-              <h3>{step.title}</h3>
-              <p>{step.desc}</p>
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-subtle)", fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                {step.details}
+              <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8", lineHeight: 1.4 }}>
+                7 deterministic consistency checks run in under 10ms with zero network requests.
+              </p>
+            </div>
+
+            <div style={{ padding: 14, background: "#0c0f16", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <FileCode size={14} color="#60a5fa" />
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>OpenAPI 3.1 Standards</strong>
               </div>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8", lineHeight: 1.4 }}>
+                Portable REST contract schemas compatible with Swagger UI, Postman, and code generators.
+              </p>
             </div>
-          ))}
-        </div>
-      </section>
 
-      {/* ─── Section F: Feature Bento Grid ─────────────────────────────────── */}
-      <section className="landing-section" id="features">
-        <div className="section-header-centered">
-          <span className="section-kicker">THE FULL SPECIFICATION SUITE</span>
-          <h2>Everything needed to plan serious applications</h2>
-          <p>Precision developer artifacts designed for technical founders and engineering leads.</p>
-        </div>
-
-        <div className="features-bento-grid">
-          <div className="bento-item span-2">
-            <div className="bento-icon"><Workflow size={20} /></div>
-            <h3>Deterministic System Topologies</h3>
-            <p>
-              Automated Mermaid.js architecture diagrams showing client apps, API gateways, microservices, caches, and database tiers with verified connection semantics.
-            </p>
-            <div className="bento-mini-preview">
-              <code>flowchart LR: Client[React SPA] ➔ Gateway[Express API] ➔ Storage[(MongoDB)]</code>
+            <div style={{ padding: 14, background: "#0c0f16", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Lock size={14} color="#a78bfa" />
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>Security-First Modeling</strong>
+              </div>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8", lineHeight: 1.4 }}>
+                HttpOnly session cookies, bcrypt password hashing, and STRIDE threat mitigation.
+              </p>
             </div>
-          </div>
 
-          <div className="bento-item">
-            <div className="bento-icon"><ShieldCheck size={20} /></div>
-            <h3>Integrity Rule Checks</h3>
-            <p>
-              Automated client-side rule checks that flag orphaned nodes, missing foreign key targets, duplicate route signatures, and unauthenticated endpoints.
-            </p>
-            <div className="bento-mini-preview" style={{ color: "var(--status-success)" }}>
-              ✓ 6/6 Architectural Integrity Checks Passing
+            <div style={{ padding: 14, background: "#0c0f16", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Server size={14} color="#38bdf8" />
+                <strong style={{ fontSize: 13, color: "#f8fafc" }}>Interactive Mock API Sandbox</strong>
+              </div>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8", lineHeight: 1.4 }}>
+                Simulate HTTP requests and inspect JSON response bodies directly inside the browser.
+              </p>
             </div>
-          </div>
-
-          <div className="bento-item">
-            <div className="bento-icon"><Database size={20} /></div>
-            <h3>MongoDB Schema Design</h3>
-            <p>
-              Document models with primary keys, foreign key references, nullability constraints, and index recommendations.
-            </p>
-            <div className="bento-mini-preview">
-              <code>Collection: User | Orders [1:N] | ObjectId refs</code>
-            </div>
-          </div>
-
-          <div className="bento-item span-2">
-            <div className="bento-icon"><Boxes size={20} /></div>
-            <h3>REST Contracts & OpenAPI 3.1</h3>
-            <p>
-              Standardized HTTP methods, request bodies, expected responses, and status codes. One-click export to OpenAPI 3.1 for Postman and Swagger.
-            </p>
-            <div className="bento-mini-preview">
-              <span className="method method-post" style={{ marginRight: 6 }}>POST</span>
-              <code>/api/v1/orders ➔ 201 Created · Schema Verified</code>
-            </div>
-          </div>
-
-          <div className="bento-item">
-            <div className="bento-icon"><Code2 size={20} /></div>
-            <h3>Downloadable MERN Starter</h3>
-            <p>
-              Generate a clean, modular repository with Express route handlers, Mongoose schemas, and client starter files in a downloadable ZIP.
-            </p>
-          </div>
-
-          <div className="bento-item">
-            <div className="bento-icon"><History size={20} /></div>
-            <h3>Persistent Projects & Version Branches</h3>
-            <p>
-              Save blueprints to MongoDB, refine requirements over time, and maintain version history without overwriting previous designs.
-            </p>
           </div>
         </div>
       </section>
 
-      {/* ─── Section G: Engineering Workflow Preview ───────────────────────── */}
-      <section className="landing-section">
-        <div className="section-header-centered">
-          <span className="section-kicker">CROSS-LAYER SPECIFICATION</span>
-          <h2>How an idea transforms across technical layers</h2>
-          <p>Every concept is systematically translated into coherent architecture, data models, and API endpoints.</p>
+      {/* ─── 9. Frequently Asked Questions ───────────────────────────────────── */}
+      <section id="faq" style={{ maxWidth: 800, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ide-accent, #8b7cff)", textTransform: "uppercase" }}>
+            FAQ
+          </span>
+          <h2 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: "#f8fafc", margin: "6px 0 6px" }}>
+            Frequently Asked Questions
+          </h2>
         </div>
 
-        <div className="workflow-pipeline-view">
-          <div className="workflow-row-item">
-            <span className="workflow-layer-badge">01 · REQUIREMENT</span>
-            <span className="workflow-layer-desc">"Customers can place idempotent orders and pay securely."</span>
-            <span className="workflow-layer-status">Input Verified</span>
-          </div>
-
-          <div className="workflow-row-item">
-            <span className="workflow-layer-badge">02 · TOPOLOGY</span>
-            <span className="workflow-layer-desc">Gateway Router ➔ Orders Service ➔ Payment Gateway ➔ Database</span>
-            <span className="workflow-layer-status">Diagram Ready</span>
-          </div>
-
-          <div className="workflow-row-item">
-            <span className="workflow-layer-badge">03 · DATA MODEL</span>
-            <span className="workflow-layer-desc">Order Schema (items, totalAmount, paymentStatus, sellerId)</span>
-            <span className="workflow-layer-status">Indexes Assigned</span>
-          </div>
-
-          <div className="workflow-row-item">
-            <span className="workflow-layer-badge">04 · REST CONTRACT</span>
-            <span className="workflow-layer-desc">POST /api/v1/orders (Idempotency-Key header, payload validation)</span>
-            <span className="workflow-layer-status">OpenAPI 3.1</span>
-          </div>
-
-          <div className="workflow-row-item">
-            <span className="workflow-layer-badge">05 · SCAFFOLD TASK</span>
-            <span className="workflow-layer-desc">Generate server/models/Order.js and server/routes/orders.js</span>
-            <span className="workflow-layer-status">ZIP Ready</span>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Section H: FAQ Accordion & Final CTA ───────────────────────────── */}
-      <section className="landing-section" id="faq">
-        <div className="section-header-centered">
-          <span className="section-kicker">FREQUENTLY ASKED QUESTIONS</span>
-          <h2>Technical clarity for developers</h2>
-        </div>
-
-        <div className="faq-accordion-wrap">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {faqs.map((faq, idx) => {
             const isOpen = openFaq === idx;
             return (
-              <div className="faq-item" key={idx}>
+              <div
+                key={faq.q}
+                style={{
+                  background: "rgba(18, 22, 32, 0.6)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: 8,
+                  overflow: "hidden"
+                }}
+              >
                 <button
-                  className="faq-question-btn"
+                  type="button"
                   onClick={() => setOpenFaq(isOpen ? -1 : idx)}
-                  aria-expanded={isOpen}
+                  style={{
+                    width: "100%",
+                    padding: "14px 18px",
+                    background: "transparent",
+                    border: "none",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    color: "#f8fafc",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
                 >
                   <span>{faq.q}</span>
-                  <ChevronDown
-                    size={16}
-                    style={{
-                      transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: "transform 0.2s ease"
-                    }}
-                  />
+                  <ChevronDown size={14} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease", color: "#94a3b8" }} />
                 </button>
                 {isOpen && (
-                  <div className="faq-answer-content">
+                  <div style={{ padding: "0 18px 16px", fontSize: 12.5, color: "#94a3b8", lineHeight: 1.6 }}>
                     {faq.a}
                   </div>
                 )}
@@ -698,82 +1195,118 @@ export default function LandingPage({ onStartBuilding, onExploreDemo, onOpenAuth
         </div>
       </section>
 
-      {/* ─── Final CTA Banner ────────────────────────────────────────────────── */}
-      <section className="landing-final-cta">
-        <div className="final-cta-card">
-          <span className="brand-mark large"><Boxes size={24} /></span>
-          <h2>Ready to architect your next software system?</h2>
-          <p>
-            Start with your own application specification or browse the four prebuilt interactive examples.
-            No credit card or complex setup required.
+      {/* ─── 10. Final CTA Banner ────────────────────────────────────────────── */}
+      <section style={{ maxWidth: 900, margin: "0 auto", padding: "0 20px 80px" }}>
+        <div
+          style={{
+            background: "linear-gradient(180deg, rgba(24, 28, 42, 0.8) 0%, rgba(14, 17, 26, 0.95) 100%)",
+            border: "1px solid rgba(139, 124, 255, 0.3)",
+            borderRadius: 12,
+            padding: "48px 24px",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center"
+          }}
+        >
+          <h2 style={{ fontSize: 26, fontWeight: 700, color: "#f8fafc", margin: "0 0 10px" }}>
+            Ready to design your application system?
+          </h2>
+          <p style={{ fontSize: 14, color: "#94a3b8", margin: "0 0 24px", maxWidth: 520 }}>
+            Start from plain-English requirements or explore 4 bundled prebuilt architecture blueprints.
           </p>
-          <div className="final-cta-buttons">
-            <button className="primary-button hero-cta" onClick={onStartBuilding}>
-              Launch Workspace Now <ArrowRight size={15} />
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => onStartBuilding()}
+              style={{ height: 38, padding: "0 20px", fontSize: 13.5, fontWeight: 600 }}
+            >
+              Start designing free <ArrowRight size={14} />
             </button>
-            <button className="secondary-button" onClick={() => scrollToSection("examples")}>
-              Browse Example Demos
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => onExploreDemo("commerceflow")}
+              style={{ height: 38, padding: "0 18px", fontSize: 13.5 }}
+            >
+              Explore live demo
             </button>
           </div>
         </div>
       </section>
 
-      {/* ─── Footer ──────────────────────────────────────────────────────────── */}
-      <footer className="landing-footer" role="contentinfo">
-        <div className="landing-footer-top">
-          <div className="footer-col brand-col">
-            <div className="brand">
-              <span className="brand-mark small"><Boxes size={16} /></span>
-              <span>InfraMind<span className="brand-period">.</span></span>
+      {/* ─── 11. Minimal Factual Footer (Real Links Only) ────────────────────── */}
+      <footer
+        style={{
+          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          background: "#07090e",
+          padding: "40px 20px 24px"
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "1.5fr repeat(3, 1fr)",
+            gap: 28,
+            marginBottom: 36
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ color: "var(--ide-accent, #8b7cff)" }}><Boxes size={18} /></span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc" }}>InfraMind</span>
             </div>
-            <p>AI-powered system architecture and application planning platform for modern engineering teams.</p>
-            <div className="stack-badges">
-              <span>Node.js</span>
-              <span>MongoDB</span>
-              <span>React</span>
-              <span>OpenRouter</span>
+            <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.5, maxWidth: 260 }}>
+              AI system design &amp; architecture workspace. Turn natural language into verifiable production specifications.
+            </p>
+          </div>
+
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", textTransform: "uppercase", display: "block", marginBottom: 10 }}>Product</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#94a3b8" }}>
+              <a href="#preview" onClick={(e) => { e.preventDefault(); scrollToSection("preview"); }} style={{ color: "inherit", textDecoration: "none" }}>System Diagram</a>
+              <a href="#traceability" onClick={(e) => { e.preventDefault(); scrollToSection("traceability"); }} style={{ color: "inherit", textDecoration: "none" }}>Traceability</a>
+              <a href="#features" onClick={(e) => { e.preventDefault(); scrollToSection("features"); }} style={{ color: "inherit", textDecoration: "none" }}>Compiler Engine</a>
             </div>
           </div>
 
-          <div className="footer-col">
-            <h4>Product</h4>
-            <a href="#how-it-works" onClick={(e) => { e.preventDefault(); scrollToSection("how-it-works"); }}>How It Works</a>
-            <a href="#examples" onClick={(e) => { e.preventDefault(); scrollToSection("examples"); }}>Example Projects</a>
-            <a href="#features" onClick={(e) => { e.preventDefault(); scrollToSection("features"); }}>Features</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); onStartBuilding(); }}>Workspace</a>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", textTransform: "uppercase", display: "block", marginBottom: 10 }}>Templates</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#94a3b8" }}>
+              <button type="button" onClick={() => onExploreDemo("commerceflow")} style={{ background: "none", border: "none", padding: 0, color: "inherit", fontSize: "inherit", textAlign: "left", cursor: "pointer" }}>CommerceFlow</button>
+              <button type="button" onClick={() => onExploreDemo("slotwise")} style={{ background: "none", border: "none", padding: 0, color: "inherit", fontSize: "inherit", textAlign: "left", cursor: "pointer" }}>SlotWise</button>
+              <button type="button" onClick={() => onExploreDemo("pulseboard")} style={{ background: "none", border: "none", padding: 0, color: "inherit", fontSize: "inherit", textAlign: "left", cursor: "pointer" }}>PulseBoard</button>
+            </div>
           </div>
 
-          <div className="footer-col">
-            <h4>Prebuilt Demos</h4>
-            {DEMO_PROJECTS.map(d => (
-              <a
-                key={d.id}
-                href={`#demo-${d.id}`}
-                onClick={(e) => { e.preventDefault(); onExploreDemo(d.id); }}
-              >
-                {d.name} ({d.domain})
-              </a>
-            ))}
-          </div>
-
-          <div className="footer-col">
-            <h4>Account & Security</h4>
-            {user ? (
-              <a href="#" onClick={(e) => { e.preventDefault(); onStartBuilding(); }}>Signed in as {user.displayName || user.email}</a>
-            ) : (
-              <>
-                <a href="#" onClick={(e) => { e.preventDefault(); onOpenAuth("signin"); }}>Sign In</a>
-                <a href="#" onClick={(e) => { e.preventDefault(); onOpenAuth("signup"); }}>Create Account</a>
-              </>
-            )}
-            <span className="footer-muted">HttpOnly JWT Auth</span>
-            <span className="footer-muted">Server-Side API Key Protection</span>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", textTransform: "uppercase", display: "block", marginBottom: 10 }}>Resources</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#94a3b8" }}>
+              <a href="https://github.com/theTyai/inframind2.o" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>GitHub Repository</a>
+              <a href="https://swagger.io/specification/" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>OpenAPI 3.1 Spec</a>
+            </div>
           </div>
         </div>
 
-        <div className="landing-footer-bottom">
-          <span>&copy; {new Date().getFullYear()} InfraMind. Made for developers who think in systems.</span>
-          <span className="footer-badge">AI-Generated Designs · Review Before Production</span>
+        {/* Footer bottom line with disclaimer */}
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+            paddingTop: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 11.5,
+            color: "#64748b"
+          }}
+        >
+          <span>AI-generated designs: review before production.</span>
+          <span>MIT License · InfraMind</span>
         </div>
       </footer>
     </div>

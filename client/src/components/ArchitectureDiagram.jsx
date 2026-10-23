@@ -1,164 +1,184 @@
-import { useEffect, useState, useRef, useCallback } from "react";
-import mermaid from "mermaid";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   ZoomIn, ZoomOut, RotateCcw, Download, Maximize2, Minimize2,
-  Crosshair, AlertTriangle, Workflow
+  Crosshair, Globe, Server, Database, Zap, Cpu, Workflow,
+  Shield, Layers, CheckCircle2, ArrowRight, Activity, Sparkles,
+  Info, ExternalLink
 } from "lucide-react";
 
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "dark",
-  themeVariables: {
-    darkMode: true,
-    background: "#08090d",
-    primaryColor: "#1a1f2c",
-    primaryBorderColor: "#7c66f6",
-    primaryTextColor: "#f3f5fa",
-    lineColor: "#53d7f4",
-    secondaryColor: "#121722",
-    tertiaryColor: "#0d1017"
-  },
-  securityLevel: "strict",
-  flowchart: { curve: "basis", htmlLabels: false, useMaxWidth: true }
-});
+// Categorize architectural node for icon and styling
+function getNodeTypeInfo(node) {
+  const t = (node.type || "").toLowerCase();
+  const l = (node.label || node.id || "").toLowerCase();
 
-function mermaidText(value) {
-  return String(value ?? "")
-    .replace(/\r?\n/g, " ")
-    .replace(/&/g, "#38;")
-    .replace(/"/g, "#quot;")
-    .replace(/'/g, "#39;")
-    .replace(/\|/g, "#124;")
-    .replace(/\[/g, "#91;")
-    .replace(/\]/g, "#93;")
-    .replace(/\{/g, "#123;")
-    .replace(/\}/g, "#125;")
-    .replace(/[<>]/g, " ")
-    .replace(/`/g, "")
-    .slice(0, 100);
+  if (t.includes("front") || t.includes("client") || t.includes("ui") || t.includes("web") || l.includes("interface") || l.includes("ui")) {
+    return { category: "frontend", label: "FRONTEND TIER", icon: Globe, color: "#38bdf8", bg: "rgba(56, 189, 248, 0.12)", border: "#38bdf8", glow: "rgba(56, 189, 248, 0.35)" };
+  }
+  if (t.includes("gateway") || t.includes("proxy") || t.includes("ingress") || l.includes("gateway")) {
+    return { category: "gateway", label: "API GATEWAY", icon: Shield, color: "#818cf8", bg: "rgba(129, 140, 248, 0.12)", border: "#818cf8", glow: "rgba(129, 140, 248, 0.35)" };
+  }
+  if (t.includes("cache") || t.includes("redis") || l.includes("redis") || l.includes("cache")) {
+    return { category: "cache", label: "IN-MEMORY CACHE", icon: Zap, color: "#53d7f4", bg: "rgba(83, 215, 244, 0.12)", border: "#53d7f4", glow: "rgba(83, 215, 244, 0.35)" };
+  }
+  if (t.includes("data") || t.includes("db") || t.includes("mongo") || t.includes("sql") || l.includes("store") || l.includes("database")) {
+    return { category: "database", label: "PRIMARY DATABASE", icon: Database, color: "#42d6a4", bg: "rgba(66, 214, 164, 0.12)", border: "#42d6a4", glow: "rgba(66, 214, 164, 0.35)" };
+  }
+  if (t.includes("worker") || t.includes("queue") || t.includes("kafka") || t.includes("job")) {
+    return { category: "worker", label: "ASYNC WORKER", icon: Workflow, color: "#f59e0b", bg: "rgba(245, 158, 11, 0.12)", border: "#f59e0b", glow: "rgba(245, 158, 11, 0.35)" };
+  }
+  return { category: "service", label: "BACKEND SERVICE", icon: Cpu, color: "#a78bfa", bg: "rgba(167, 139, 250, 0.12)", border: "#a78bfa", glow: "rgba(167, 139, 250, 0.35)" };
 }
 
 export default function ArchitectureDiagram({ architecture }) {
-  const [svg, setSvg] = useState("");
-  const [error, setError] = useState("");
+  const containerRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 60, y: 60 });
   const [fullscreen, setFullscreen] = useState(false);
-  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isAnimationRunning, setIsAnimationRunning] = useState(true);
+  const [animationSpeed, setAnimationSpeed] = useState("normal"); // "normal" | "fast"
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const containerRef = useRef(null);
-  const svgWrapRef = useRef(null);
+  const rawNodes = Array.isArray(architecture?.nodes) ? architecture.nodes : [];
+  const rawEdges = Array.isArray(architecture?.edges) ? architecture.edges : [];
 
-  const nodes = Array.isArray(architecture?.nodes) ? architecture.nodes : [];
-  const edges = Array.isArray(architecture?.edges) ? architecture.edges : [];
+  // Compute multi-tier flowchart layout with generous spacing and distinct X tiers
+  const { nodePositions, layoutEdges, bounds } = useMemo(() => {
+    const nodeW = 236;
+    const nodeH = 78;
+    const positions = new Map();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function renderDiagram() {
-      try {
-        setError("");
-        setSvg("");
-        setPan({ x: 0, y: 0 });
-        setZoom(1);
-        if (!nodes.length) throw new Error("No architecture nodes were generated.");
-
-        const ids = new Map(nodes.map((node, index) => [node.id, `mnode${index}`]));
-        const lines = ["flowchart LR"];
-
-        nodes.forEach((node, index) => {
-          const label = mermaidText(node.label || node.type || node.id);
-          const isDb = (node.type || "").toLowerCase().includes("db") ||
-            (node.type || "").toLowerCase().includes("database") ||
-            (node.label || "").toLowerCase().includes("db") ||
-            (node.label || "").toLowerCase().includes("database");
-          if (isDb) {
-            lines.push(`mnode${index}[("${label}")]`);
-          } else {
-            lines.push(`mnode${index}["${label}"]`);
-          }
-        });
-
-        edges.forEach(edge => {
-          const from = ids.get(edge.from);
-          const to = ids.get(edge.to);
-          if (from && to) {
-            const edgeLabel = mermaidText(edge.label || "");
-            if (edgeLabel) {
-              lines.push(`${from} -->|"${edgeLabel}"| ${to}`);
-            } else {
-              lines.push(`${from} --> ${to}`);
-            }
-          }
-        });
-
-        const rendered = await mermaid.render(
-          `arch-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-          lines.join("\n")
-        );
-        if (!cancelled) {
-          setSvg(rendered.svg);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err?.message || "Diagram renderer could not parse this blueprint.");
-      }
+    if (rawNodes.length === 0) {
+      return { nodePositions: positions, layoutEdges: [], bounds: { minX: 0, minY: 0, width: 800, height: 400 } };
     }
 
-    renderDiagram();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [architecture]);
+    // Group nodes into topological tiers: Frontend -> Gateway -> Core Services -> Database/Cache
+    const tiers = {
+      frontend: [],
+      gateway: [],
+      service: [],
+      database: []
+    };
 
-  // After SVG renders, auto-fit it to the container
+    rawNodes.forEach(node => {
+      const info = getNodeTypeInfo(node);
+      if (info.category === "frontend") tiers.frontend.push(node);
+      else if (info.category === "gateway") tiers.gateway.push(node);
+      else if (info.category === "database" || info.category === "cache") tiers.database.push(node);
+      else tiers.service.push(node);
+    });
+
+    const activeTiers = [
+      { key: "frontend", title: "Client Layer", nodes: tiers.frontend },
+      { key: "gateway", title: "API Gateway", nodes: tiers.gateway },
+      { key: "service", title: "Application Services", nodes: tiers.service },
+      { key: "database", title: "Data & Storage Tier", nodes: tiers.database }
+    ].filter(t => t.nodes.length > 0);
+
+    let curX = 60;
+    const colSpacing = 120;
+    const rowSpacing = 114;
+    let maxY = 420;
+
+    activeTiers.forEach((tier) => {
+      const startY = 80;
+      tier.nodes.forEach((node, rowIdx) => {
+        const y = startY + rowIdx * rowSpacing;
+        positions.set(node.id, {
+          x: curX,
+          y,
+          width: nodeW,
+          height: nodeH,
+          data: node,
+          info: getNodeTypeInfo(node)
+        });
+        if (y + nodeH > maxY) maxY = y + nodeH;
+      });
+      curX += nodeW + colSpacing;
+    });
+
+    // Fallback if no tier matching happened
+    if (positions.size === 0) {
+      rawNodes.forEach((node, i) => {
+        positions.set(node.id, {
+          x: 60 + (i % 3) * 330,
+          y: 80 + Math.floor(i / 3) * 130,
+          width: nodeW,
+          height: nodeH,
+          data: node,
+          info: getNodeTypeInfo(node)
+        });
+      });
+    }
+
+    // Map and calculate edge paths with smooth bezier curves
+    const edgesWithCoords = rawEdges.map((e, idx) => {
+      const src = positions.get(e.from);
+      const tgt = positions.get(e.to);
+      if (!src || !tgt) return null;
+
+      // Start from right of source to left of target
+      const x1 = src.x + src.width;
+      const y1 = src.y + src.height / 2;
+      const x2 = tgt.x;
+      const y2 = tgt.y + tgt.height / 2;
+
+      // Cubic bezier control points
+      const dx = Math.abs(x2 - x1) * 0.5;
+      const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+
+      return {
+        id: `topo-edge-${idx}`,
+        from: e.from,
+        to: e.to,
+        label: e.label || "invokes",
+        pathD,
+        x1, y1, x2, y2,
+        midX, midY,
+        srcInfo: src.info,
+        tgtInfo: tgt.info
+      };
+    }).filter(Boolean);
+
+    const maxX = curX;
+    return {
+      nodePositions: positions,
+      layoutEdges: edgesWithCoords,
+      bounds: { minX: 40, minY: 40, width: Math.max(760, maxX + 60), height: Math.max(460, maxY + 100) }
+    };
+  }, [rawNodes, rawEdges]);
+
+  // Mathematically Symmetrical Fit-to-View with healthy minimum zoom
   const fitToView = useCallback(() => {
-    if (!containerRef.current || !svgWrapRef.current) return;
-    const svgEl = svgWrapRef.current.querySelector("svg");
-    if (!svgEl) return;
+    if (!containerRef.current) return;
+    const { clientWidth, clientHeight } = containerRef.current;
+    if (clientWidth <= 0 || clientHeight <= 0) return;
 
-    const containerW = containerRef.current.clientWidth;
-    const containerH = containerRef.current.clientHeight;
+    const graphW = bounds.width;
+    const graphH = bounds.height;
 
-    // Get the SVG's natural size from its viewBox or width/height attributes
-    let svgW = svgEl.viewBox?.baseVal?.width || svgEl.clientWidth || 800;
-    let svgH = svgEl.viewBox?.baseVal?.height || svgEl.clientHeight || 400;
+    const scaleX = (clientWidth - 70) / graphW;
+    const scaleY = (clientHeight - 70) / graphH;
+    const newZoom = Math.max(0.72, Math.min(1.15, Math.min(scaleX, scaleY)));
 
-    // Clamp to actual rendered size if viewBox is very large
-    const bbox = svgEl.getBBox?.();
-    if (bbox && bbox.width > 0) {
-      svgW = bbox.width + 40;
-      svgH = bbox.height + 40;
-    }
-
-    if (svgW <= 0 || svgH <= 0) return;
-
-    const scaleX = (containerW - 40) / svgW;
-    const scaleY = (containerH - 40) / svgH;
-    const newZoom = Math.max(0.25, Math.min(1.5, Math.min(scaleX, scaleY)));
-
-    const offsetX = Math.round((containerW - svgW * newZoom) / 2);
-    const offsetY = Math.round((containerH - svgH * newZoom) / 2);
+    const offsetX = Math.round((clientWidth - graphW * newZoom) / 2);
+    const offsetY = Math.round((clientHeight - graphH * newZoom) / 2);
 
     setZoom(Number(newZoom.toFixed(2)));
-    setPan({ x: Math.max(0, offsetX), y: Math.max(0, offsetY) });
-  }, []);
+    setPan({ x: Math.max(20, offsetX), y: Math.max(20, offsetY) });
+  }, [bounds]);
 
-  // Fit after SVG is injected
   useEffect(() => {
-    if (!svg) return;
     const timer = setTimeout(fitToView, 80);
     return () => clearTimeout(timer);
-  }, [svg, fitToView]);
+  }, [fitToView]);
 
-  // Also fit when fullscreen changes
-  useEffect(() => {
-    const timer = setTimeout(fitToView, 60);
-    return () => clearTimeout(timer);
-  }, [fullscreen, fitToView]);
-
+  // Drag canvas handlers
   function handleMouseDown(e) {
-    if (e.button !== 0) return;
+    if (e.target.closest("button") || e.target.closest(".topo-node-card")) return;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   }
@@ -174,88 +194,167 @@ export default function ArchitectureDiagram({ architecture }) {
 
   function handleWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom(z => Number(Math.max(0.25, Math.min(2.5, z + delta)).toFixed(2)));
+    const delta = e.deltaY > 0 ? -0.06 : 0.06;
+    setZoom(z => Number(Math.max(0.3, Math.min(2.0, z + delta)).toFixed(2)));
   }
 
-  function handleExportSvg() {
-    if (!svg) return;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `architecture-diagram-${Date.now()}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  const containerStyle = fullscreen ? {
-    position: "fixed",
-    inset: 0,
-    zIndex: 9999,
-    background: "#08090d",
-    display: "flex",
-    flexDirection: "column"
-  } : {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    minHeight: 480,
-    background: "#08090d",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.07)",
-    overflow: "hidden"
-  };
+  const selectedNode = selectedNodeId ? nodePositions.get(selectedNodeId) : null;
 
   return (
-    <div style={containerStyle}>
-      {/* Toolbar */}
-      <div className="diagram-toolbar" style={{ flexShrink: 0 }}>
-        <div>
-          <strong>System Topology Flow</strong>
-          <span>Derived from blueprint requirements ({nodes.length} components, {edges.length} connections)</span>
+    <div
+      style={fullscreen ? {
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "#08090d",
+        display: "flex",
+        flexDirection: "column"
+      } : {
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 520,
+        background: "radial-gradient(ellipse at top, #111522 0%, #07090e 100%)",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.08)",
+        overflow: "hidden",
+        position: "relative"
+      }}
+    >
+      {/* ─── Slim Interactive Header ────────────────────────────────────────── */}
+      <div style={{
+        height: 42,
+        padding: "0 14px",
+        background: "rgba(10, 12, 18, 0.96)",
+        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexShrink: 0,
+        zIndex: 10,
+        userSelect: "none"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            fontSize: 10,
+            fontWeight: 800,
+            padding: "2px 7px",
+            borderRadius: 4,
+            background: "rgba(83, 215, 244, 0.15)",
+            color: "#53d7f4",
+            border: "1px solid rgba(83, 215, 244, 0.3)"
+          }}>
+            <Activity size={12} className={isAnimationRunning ? "pulse-anim" : ""} />
+            ANIMATED FLOWCHART TOPOLOGY
+          </span>
+          <strong style={{ fontSize: 13, color: "#f3f5fa" }}>
+            Component Topology ({rawNodes.length} services, {rawEdges.length} connections)
+          </strong>
         </div>
 
-        <div className="diagram-controls">
-          <div className="diagram-key" style={{ marginRight: 8 }}>
-            <i /> Service <i className="db-dot" /> Database
-          </div>
+        {/* Controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setIsAnimationRunning(!isAnimationRunning)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "3px 9px",
+              borderRadius: 6,
+              background: isAnimationRunning ? "rgba(66, 214, 164, 0.15)" : "rgba(255,255,255,0.04)",
+              color: isAnimationRunning ? "#42d6a4" : "var(--ide-text-muted)",
+              border: isAnimationRunning ? "1px solid rgba(66, 214, 164, 0.3)" : "1px solid rgba(255,255,255,0.08)",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+            title="Toggle Live Particle Pulse Flow"
+          >
+            <Sparkles size={11} />
+            <span>{isAnimationRunning ? "Flow Animation: ON" : "Flow Animation: OFF"}</span>
+          </button>
 
-          <button className="control-btn" onClick={() => setZoom(z => Math.max(0.25, Number((z - 0.15).toFixed(2))))} title="Zoom out">
-            <ZoomOut size={13} />
-          </button>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)", minWidth: 36, textAlign: "center" }}>
-            {Math.round(zoom * 100)}%
-          </span>
-          <button className="control-btn" onClick={() => setZoom(z => Math.min(2.5, Number((z + 0.15).toFixed(2))))} title="Zoom in">
-            <ZoomIn size={13} />
-          </button>
-          <button className="control-btn" onClick={fitToView} title="Fit to view">
-            <Crosshair size={13} />
-          </button>
-          <button className="control-btn" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} title="Reset zoom">
-            <RotateCcw size={13} />
-          </button>
-
-          {svg && (
-            <button className="control-btn" onClick={handleExportSvg} title="Export diagram as SVG">
-              <Download size={13} /> Export SVG
+          {isAnimationRunning && (
+            <button
+              onClick={() => setAnimationSpeed(s => s === "normal" ? "fast" : "normal")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 6,
+                background: "rgba(83, 215, 244, 0.12)",
+                color: "#53d7f4",
+                border: "1px solid rgba(83, 215, 244, 0.25)",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+              title="Toggle animation speed"
+            >
+              <Activity size={10} />
+              <span>Speed: {animationSpeed === "normal" ? "1x" : "2x"}</span>
             </button>
           )}
 
+          <div style={{ display: "flex", alignItems: "center", gap: 2, background: "rgba(0,0,0,0.3)", borderRadius: 6, padding: 2 }}>
+            <button
+              onClick={() => setZoom(z => Math.max(0.3, Number((z - 0.1).toFixed(2))))}
+              style={{ background: "transparent", border: "none", color: "var(--ide-text-muted)", padding: "3px 6px", cursor: "pointer" }}
+              title="Zoom out"
+            >
+              <ZoomOut size={13} />
+            </button>
+            <span style={{ fontSize: 10, color: "var(--ide-text-dim)", minWidth: 32, textAlign: "center", fontFamily: "var(--ide-font-mono)" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(z => Math.min(2.0, Number((z + 0.1).toFixed(2))))}
+              style={{ background: "transparent", border: "none", color: "var(--ide-text-muted)", padding: "3px 6px", cursor: "pointer" }}
+              title="Zoom in"
+            >
+              <ZoomIn size={13} />
+            </button>
+            <button
+              onClick={fitToView}
+              style={{ background: "transparent", border: "none", color: "var(--ide-text-muted)", padding: "3px 6px", cursor: "pointer" }}
+              title="Fit to view"
+            >
+              <Crosshair size={13} />
+            </button>
+            <button
+              onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
+              style={{ background: "transparent", border: "none", color: "var(--ide-text-muted)", padding: "3px 6px", cursor: "pointer" }}
+              title="Reset"
+            >
+              <RotateCcw size={13} />
+            </button>
+          </div>
+
           <button
-            className="control-btn"
             onClick={() => setFullscreen(!fullscreen)}
-            title={fullscreen ? "Exit fullscreen" : "Fullscreen view"}
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 6,
+              color: "var(--ide-text-muted)",
+              padding: "4px 8px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center"
+            }}
+            title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
         </div>
       </div>
 
-      {/* Main viewport */}
+      {/* ─── Main Flowchart Canvas with Animated SVG Connectors ─────────────── */}
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
@@ -265,109 +364,336 @@ export default function ArchitectureDiagram({ architecture }) {
         onWheel={handleWheel}
         style={{
           flex: 1,
+          width: "100%",
+          height: "100%",
           overflow: "hidden",
           position: "relative",
-          cursor: isDragging ? "grabbing" : svg ? "grab" : "default",
-          background: "#08090d"
+          cursor: isDragging ? "grabbing" : "grab"
         }}
       >
-        {error ? (
-          /* Fallback table when Mermaid fails */
-          <div className="diagram-fallback" style={{ overflowY: "auto", height: "100%" }}>
-            <div className="fallback-heading">
-              <span className="fallback-icon"><AlertTriangle size={18} /></span>
+        <svg
+          width="100%"
+          height="100%"
+          style={{ display: "block", position: "absolute", inset: 0 }}
+        >
+          <defs>
+            {/* Grid background */}
+            <pattern id="topo-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="1" fill="rgba(255, 255, 255, 0.05)" />
+            </pattern>
+
+            {/* Standard Arrow Marker */}
+            <marker id="topo-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 9 5 L 0 9 z" fill="#53d7f4" />
+            </marker>
+            <marker id="topo-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 9 5 L 0 9 z" fill="#8b7cff" />
+            </marker>
+
+            {/* Glowing Flow Filter */}
+            <filter id="topo-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* Scaled & Panned Viewport */}
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            {/* Dot grid */}
+            <rect
+              x={bounds.minX - 1000}
+              y={bounds.minY - 1000}
+              width={bounds.width + 2000}
+              height={bounds.height + 2000}
+              fill="url(#topo-grid)"
+            />
+
+            {/* ─── Animated Connecting Flow Lines ───────────────────────────── */}
+            {layoutEdges.map(edge => {
+              const isConnectedToSelected = selectedNodeId && (edge.from === selectedNodeId || edge.to === selectedNodeId);
+              const strokeColor = isConnectedToSelected ? "#8b7cff" : "rgba(83, 215, 244, 0.45)";
+              const strokeWidth = isConnectedToSelected ? 2.6 : 1.8;
+              const flowDuration = animationSpeed === "fast" ? "1.2s" : "2.2s";
+              const halfDuration = animationSpeed === "fast" ? "-0.6s" : "-1.1s";
+
+              return (
+                <g key={edge.id} className="topo-edge-group">
+                  {/* Base Glow Line */}
+                  <path
+                    d={edge.pathD}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={isAnimationRunning ? "6 6" : "none"}
+                    className={isAnimationRunning ? (animationSpeed === "fast" ? "flow-marching-ants-fast" : "flow-marching-ants") : ""}
+                    markerEnd={isConnectedToSelected ? "url(#topo-arrow-active)" : "url(#topo-arrow)"}
+                  />
+
+                  {/* Flowing Glowing Light Pulse Particles - Dual Wave */}
+                  {isAnimationRunning && (
+                    <g>
+                      {/* Wave 1 */}
+                      <circle r="5" fill={isConnectedToSelected ? "#ff737d" : "#53d7f4"} filter="url(#topo-glow)">
+                        <animateMotion
+                          path={edge.pathD}
+                          dur={flowDuration}
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                      <circle r="2.2" fill="#ffffff">
+                        <animateMotion
+                          path={edge.pathD}
+                          dur={flowDuration}
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+
+                      {/* Wave 2 (offset) */}
+                      <circle r="4" fill={isConnectedToSelected ? "#ff737d" : "#53d7f4"} opacity={0.7} filter="url(#topo-glow)">
+                        <animateMotion
+                          path={edge.pathD}
+                          dur={flowDuration}
+                          begin={halfDuration}
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                      <circle r="1.8" fill="#ffffff">
+                        <animateMotion
+                          path={edge.pathD}
+                          dur={flowDuration}
+                          begin={halfDuration}
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                    </g>
+                  )}
+
+                  {/* Connection Label Pill */}
+                  <g transform={`translate(${edge.midX}, ${edge.midY})`}>
+                    <rect
+                      x={-34}
+                      y={-10}
+                      width={68}
+                      height={20}
+                      rx={5}
+                      fill="#0c0f17"
+                      stroke={strokeColor}
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={0}
+                      y={4}
+                      fill="#f3f5fa"
+                      fontSize="9"
+                      fontFamily="var(--ide-font-mono)"
+                      fontWeight="650"
+                      textAnchor="middle"
+                    >
+                      {edge.label?.slice(0, 12)}
+                    </text>
+                  </g>
+                </g>
+              );
+            })}
+
+            {/* ─── Graphical Flowchart Node Cards with Icons ─────────────────── */}
+            {Array.from(nodePositions.values()).map(node => {
+              const isSelected = selectedNodeId === node.data.id;
+              const Icon = node.info.icon;
+
+              return (
+                <g
+                  key={node.data.id}
+                  className="topo-node-card"
+                  transform={`translate(${node.x}, ${node.y})`}
+                  onClick={() => setSelectedNodeId(isSelected ? null : node.data.id)}
+                  style={{ cursor: "pointer" }}
+                >
+                  {/* Outer Glow on Selected */}
+                  {isSelected && (
+                    <rect
+                      x={-4}
+                      y={-4}
+                      width={node.width + 8}
+                      height={node.height + 8}
+                      rx={10}
+                      fill="none"
+                      stroke="var(--ide-accent)"
+                      strokeWidth={2}
+                      filter="url(#topo-glow)"
+                    />
+                  )}
+
+                  {/* Card Body */}
+                  <rect
+                    width={node.width}
+                    height={node.height}
+                    rx={8}
+                    fill="#111520"
+                    stroke={isSelected ? "var(--ide-accent)" : node.info.border}
+                    strokeWidth={isSelected ? 2 : 1.2}
+                    filter="drop-shadow(0 4px 14px rgba(0,0,0,0.5))"
+                  />
+
+                  {/* Live Status indicator in top right */}
+                  <circle cx={node.width - 18} cy={18} r={3.5} fill="#42d6a4" className="pulse-anim" />
+                  <circle cx={node.width - 18} cy={18} r={7} fill="none" stroke="#42d6a4" strokeWidth={0.8} opacity={0.6} />
+                  <text x={node.width - 28} y={21} fill="#42d6a4" fontSize="8" fontWeight="800" textAnchor="end">LIVE</text>
+
+                  {/* Icon Badge container on Left */}
+                  <rect
+                    x={8}
+                    y={12}
+                    width={50}
+                    height={50}
+                    rx={6}
+                    fill={node.info.bg}
+                    stroke={node.info.border}
+                    strokeWidth={0.8}
+                  />
+
+                  {/* Render Icon via foreignObject */}
+                  <foreignObject x={8} y={12} width={50} height={50}>
+                    <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: node.info.color }}>
+                      <Icon size={24} />
+                    </div>
+                  </foreignObject>
+
+                  {/* Tier Category Eyebrow */}
+                  <text
+                    x={68}
+                    y={26}
+                    fill={node.info.color}
+                    fontSize="9"
+                    fontWeight="800"
+                    letterSpacing="0.08em"
+                    textTransform="uppercase"
+                  >
+                    {node.info.label}
+                  </text>
+
+                  {/* Component Title */}
+                  <text
+                    x={68}
+                    y={43}
+                    fill="#f3f5fa"
+                    fontSize="13"
+                    fontWeight="700"
+                  >
+                    {node.data.label?.length > 17 ? `${node.data.label.slice(0, 16)}…` : node.data.label}
+                  </text>
+
+                  {/* Component ID / Subtitle */}
+                  <text
+                    x={68}
+                    y={58}
+                    fill="var(--ide-text-dim)"
+                    fontSize="10"
+                    fontFamily="var(--ide-font-mono)"
+                  >
+                    {node.data.id}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+
+        {/* ─── Selected Node Deep Dive Inspector (Overlay) ────────────────── */}
+        {selectedNode && (
+          <div style={{
+            position: "absolute",
+            bottom: 16,
+            left: 16,
+            right: 16,
+            background: "rgba(13, 16, 24, 0.94)",
+            border: "1px solid rgba(139, 124, 255, 0.4)",
+            borderRadius: 8,
+            padding: "12px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
+            zIndex: 10
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: selectedNode.info.bg,
+                color: selectedNode.info.color,
+                display: "grid",
+                placeItems: "center"
+              }}>
+                <selectedNode.info.icon size={18} />
+              </span>
               <div>
-                <strong>Mermaid renderer fallback</strong>
-                <p>Showing structured topology: {error}</p>
-              </div>
-            </div>
-            <div className="fallback-nodes">
-              {nodes.map((node, index) => (
-                <div className="fallback-node" key={`${node.id}-${index}`}>
-                  <span className="fallback-node-number">{String(index + 1).padStart(2, "0")}</span>
-                  <div>
-                    <strong>{node.label || node.id}</strong>
-                    <p>{node.description || node.type || "System component"}</p>
-                  </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <strong style={{ fontSize: 14, color: "#f3f5fa" }}>{selectedNode.data.label}</strong>
+                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: selectedNode.info.bg, color: selectedNode.info.color, fontWeight: 700 }}>
+                    {selectedNode.info.label}
+                  </span>
                 </div>
-              ))}
-            </div>
-            {edges.length > 0 && (
-              <div className="fallback-connections" style={{ marginTop: 18, borderTop: "1px solid var(--border-subtle)", paddingTop: 14 }}>
-                <strong style={{ fontSize: 11, display: "block", marginBottom: 8 }}>Connections:</strong>
-                {edges.map((edge, index) => (
-                  <div key={`${edge.from}-${edge.to}-${index}`} style={{ display: "flex", gap: 8, padding: "6px 0", fontSize: 11 }}>
-                    <span>{nodes.find(n => n.id === edge.from)?.label || edge.from}</span>
-                    <b style={{ color: "var(--accent-violet)" }}>→</b>
-                    <span>{nodes.find(n => n.id === edge.to)?.label || edge.to}</span>
-                    <small style={{ color: "var(--text-muted)", marginLeft: "auto" }}>{edge.label}</small>
-                  </div>
-                ))}
+                <span style={{ fontSize: 11, color: "var(--ide-text-secondary)" }}>
+                  {selectedNode.data.description || "Active architectural component."}
+                </span>
               </div>
-            )}
+            </div>
+
+            <button
+              onClick={() => setSelectedNodeId(null)}
+              style={{ background: "transparent", border: "none", color: "var(--ide-text-dim)", cursor: "pointer", fontSize: 12 }}
+            >
+              Close ✕
+            </button>
           </div>
-        ) : !svg ? (
-          /* Loading state */
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: "var(--text-muted)", fontSize: 12 }}>
-            <span className="spinner" /> Rendering Mermaid diagram…
-          </div>
-        ) : (
-          /* Panned & zoomed SVG viewport */
-          <div
-            ref={svgWrapRef}
-            style={{
-              position: "absolute",
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: "0 0",
-              transition: isDragging ? "none" : "transform 0.1s ease"
-            }}
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
         )}
       </div>
 
-      {/* Component Quick Inspector Grid */}
-      {nodes.length > 0 && !error && (
-        <div style={{ flexShrink: 0, borderTop: "1px solid var(--border-subtle)", padding: "12px 16px", maxHeight: 200, overflowY: "auto", background: "#0d1017" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)", textTransform: "uppercase" }}>
-              Components ({nodes.length}) · Click to inspect
-            </span>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-            {nodes.map((node, i) => {
-              const isSelected = selectedNode?.id === node.id;
-              return (
-                <div
-                  key={node.id || i}
-                  onClick={() => setSelectedNode(isSelected ? null : node)}
-                  style={{
-                    padding: "8px 10px",
-                    background: isSelected ? "rgba(139, 124, 255, 0.1)" : "var(--bg-surface-2)",
-                    border: `1px solid ${isSelected ? "var(--accent-violet)" : "var(--border-subtle)"}`,
-                    borderRadius: "var(--radius-sm)",
-                    cursor: "pointer",
-                    transition: "all var(--duration-fast)"
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <strong style={{ fontSize: 11, color: "var(--text-primary)" }}>{node.label || node.id}</strong>
-                    <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "var(--accent-cyan)", background: "rgba(83, 215, 244, 0.08)", padding: "1px 5px", borderRadius: 3 }}>
-                      {(node.type || "SVC").toUpperCase()}
-                    </span>
-                  </div>
-                  {node.description && (
-                    <p style={{ margin: "3px 0 0", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>
-                      {node.description.slice(0, 80)}{node.description.length > 80 ? "…" : ""}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* ─── Bottom Component Ledger Strip ─────────────────────────────────── */}
+      <div style={{
+        padding: "8px 14px",
+        background: "rgba(8, 10, 15, 0.98)",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        overflowX: "auto",
+        flexShrink: 0,
+        fontSize: 11
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "var(--ide-text-dim)", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+          COMPONENTS ({rawNodes.length}):
+        </span>
+        {rawNodes.map(node => {
+          const info = getNodeTypeInfo(node);
+          const isSelected = selectedNodeId === node.id;
+          const Icon = info.icon;
+          return (
+            <button
+              key={node.id}
+              onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "3px 8px",
+                borderRadius: 4,
+                background: isSelected ? info.bg : "rgba(255,255,255,0.03)",
+                border: isSelected ? `1px solid ${info.border}` : "1px solid rgba(255,255,255,0.06)",
+                color: isSelected ? info.color : "var(--ide-text-secondary)",
+                cursor: "pointer",
+                whiteSpace: "nowrap"
+              }}
+            >
+              <Icon size={12} />
+              <span>{node.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
