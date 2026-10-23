@@ -6,6 +6,9 @@ import {
   WORKSPACE_PANEL_DEFAULTS,
   getStoredNumber
 } from "./useWorkspaceState.js";
+import { normalizeToCanonicalModel } from "./canonicalModel.js";
+import { buildGraphIndex } from "./graphAnalysis.js";
+import { DEMO_PROJECTS } from "../data/demoProjects/index.js";
 
 describe("Workspace State & Panel Logic", () => {
   it("determines correct platform modifier", () => {
@@ -31,5 +34,95 @@ describe("Workspace State & Panel Logic", () => {
   it("safely falls back for localStorage dimension retrieval", () => {
     const def = getStoredNumber("non_existent_key", 260, 180, 440);
     assert.equal(def, 260);
+  });
+
+  it("computes accurate non-inflated bounding box from real node min/max", () => {
+    function computeAccurateBounds(positions) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      positions.forEach(pos => {
+        minX = Math.min(minX, pos.x);
+        minY = Math.min(minY, pos.y);
+        maxX = Math.max(maxX, pos.x + pos.width);
+        maxY = Math.max(maxY, pos.y + pos.height);
+      });
+      return {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: Math.max(100, maxX - minX),
+        height: Math.max(100, maxY - minY)
+      };
+    }
+
+    const testNodes = [
+      { x: 40, y: 56, width: 200, height: 54 },
+      { x: 304, y: 124, width: 200, height: 54 }
+    ];
+    const bounds = computeAccurateBounds(testNodes);
+    assert.equal(bounds.minX, 40);
+    assert.equal(bounds.minY, 56);
+    assert.equal(bounds.maxX, 504);
+    assert.equal(bounds.maxY, 178);
+    assert.equal(bounds.width, 464);
+    assert.equal(bounds.height, 122);
+  });
+
+  it("calculates symmetrical centering offsets across all 4 demo blueprints", () => {
+    const clientWidth = 1000;
+    const clientHeight = 700;
+    const padding = 48;
+
+    DEMO_PROJECTS.forEach(demo => {
+      const canonical = normalizeToCanonicalModel(demo.fixture);
+      const graph = buildGraphIndex(canonical);
+      assert.ok(graph.nodes.length > 0);
+
+      const nodeW = 200;
+      const nodeH = 54;
+      const positions = [];
+      let curX = 40;
+      const colSpacing = 64;
+      const rowSpacing = 68;
+
+      const types = ["requirement", "actor", "component", "api", "entity", "workflow", "test"];
+      types.forEach(t => {
+        const nodesOfType = graph.nodes.filter(n => n.type === t);
+        if (!nodesOfType.length) return;
+        nodesOfType.forEach((node, idx) => {
+          positions.push({
+            id: node.id,
+            x: curX,
+            y: 56 + idx * rowSpacing,
+            width: nodeW,
+            height: nodeH
+          });
+        });
+        curX += nodeW + colSpacing;
+      });
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      positions.forEach(pos => {
+        minX = Math.min(minX, pos.x);
+        minY = Math.min(minY, pos.y);
+        maxX = Math.max(maxX, pos.x + pos.width);
+        maxY = Math.max(maxY, pos.y + pos.height);
+      });
+
+      const width = Math.max(100, maxX - minX);
+      const height = Math.max(100, maxY - minY);
+
+      const scaleX = (clientWidth - padding * 2) / width;
+      const scaleY = (clientHeight - padding * 2) / height;
+      const fitZoom = Math.max(0.15, Math.min(1.25, Math.min(scaleX, scaleY)));
+
+      const offsetX = (clientWidth - width * fitZoom) / 2 - minX * fitZoom;
+      const offsetY = (clientHeight - height * fitZoom) / 2 - minY * fitZoom;
+
+      const screenLeft = offsetX + minX * fitZoom;
+      const screenRight = offsetX + maxX * fitZoom;
+      assert.ok(screenLeft >= 0, `Demo ${demo.id}: left margin must be >= 0`);
+      assert.ok(Math.abs(screenLeft - (clientWidth - screenRight)) < 0.001, `Demo ${demo.id}: margins must be symmetrical`);
+    });
   });
 });

@@ -1,20 +1,19 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
-  ZoomIn, ZoomOut, RotateCcw, Search, Filter, ShieldAlert,
-  ChevronRight, ArrowRight, Activity, Zap, Layers, Cpu, Database,
-  Workflow, CheckSquare, Users, FileCode, Maximize2, Crosshair,
-  Grid, ListFilter, AlertTriangle, Info, Table, LayoutGrid
+  ZoomIn, ZoomOut, RotateCcw, Filter,
+  Layers, Cpu, Database, Zap, Workflow, CheckSquare, Users,
+  Maximize2, Crosshair, AlertTriangle, Info, Table, LayoutGrid, ChevronDown, Check
 } from "lucide-react";
 import { buildGraphIndex, inspectNodeNeighborhood } from "../lib/graphAnalysis.js";
 
 const TYPE_CONFIG = {
-  requirement: { bg: "rgba(139, 124, 255, 0.15)", border: "#8b7cff", text: "#c2b9ff", icon: Layers, label: "Requirement" },
-  actor: { bg: "rgba(243, 185, 107, 0.15)", border: "#f3b96b", text: "#f8d5a8", icon: Users, label: "Actor / Role" },
-  component: { bg: "rgba(83, 215, 244, 0.15)", border: "#53d7f4", text: "#9be8f9", icon: Cpu, label: "Component" },
-  entity: { bg: "rgba(66, 214, 164, 0.15)", border: "#42d6a4", text: "#96ebd0", icon: Database, label: "Entity" },
-  api: { bg: "rgba(99, 179, 237, 0.15)", border: "#63b3ed", text: "#bee3f8", icon: Zap, label: "API" },
-  workflow: { bg: "rgba(246, 173, 85, 0.15)", border: "#f6ad55", text: "#fbd38d", icon: Workflow, label: "Workflow" },
-  test: { bg: "rgba(79, 209, 197, 0.15)", border: "#4fd1c5", text: "#b2f5ea", icon: CheckSquare, label: "Verification" }
+  requirement: { bg: "rgba(167, 139, 250, 0.12)", border: "var(--cat-requirement)", text: "#ddd6fe", dot: "var(--cat-requirement)", icon: Layers, label: "Requirement" },
+  actor: { bg: "rgba(251, 191, 36, 0.12)", border: "var(--cat-actor)", text: "#fef3c7", dot: "var(--cat-actor)", icon: Users, label: "Actor / Role" },
+  component: { bg: "rgba(56, 189, 248, 0.12)", border: "var(--cat-component)", text: "#e0f2fe", dot: "var(--cat-component)", icon: Cpu, label: "Component" },
+  entity: { bg: "rgba(52, 211, 153, 0.12)", border: "var(--cat-entity)", text: "#d1fae5", dot: "var(--cat-entity)", icon: Database, label: "Entity" },
+  api: { bg: "rgba(96, 165, 250, 0.12)", border: "var(--cat-api)", text: "#dbeafe", dot: "var(--cat-api)", icon: Zap, label: "API" },
+  workflow: { bg: "rgba(249, 115, 22, 0.12)", border: "var(--cat-workflow)", text: "#ffedd5", dot: "var(--cat-workflow)", icon: Workflow, label: "Workflow" },
+  test: { bg: "rgba(45, 212, 191, 0.12)", border: "var(--cat-test)", text: "#ccfbf1", dot: "var(--cat-test)", icon: CheckSquare, label: "Verification" }
 };
 
 export default function CausalGraph({
@@ -24,21 +23,26 @@ export default function CausalGraph({
   onSelectNode
 }) {
   const containerRef = useRef(null);
+  const filterPopoverRef = useRef(null);
+
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 40, y: 40 });
-  const [searchQuery, setSearchQuery] = useState("");
   const [internalSelectedNodeId, setInternalSelectedNodeId] = useState(null);
   const selectedNodeId = externalSelectedNodeId !== undefined ? externalSelectedNodeId : internalSelectedNodeId;
 
-  const setSelectedNodeId = (id) => {
+  const setSelectedNodeId = useCallback((id) => {
     setInternalSelectedNodeId(id);
     if (onSelectNode) {
       const node = graph.nodes.find(n => n.id === id);
       onSelectNode(node || (id ? { id, label: id, type: "component" } : null));
     }
-  };
+  }, [onSelectNode]);
+
   const [layoutMode, setLayoutMode] = useState("lr"); // "lr" | "tb" | "cluster"
   const [viewMode, setViewMode] = useState("graph"); // "graph" | "table"
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+
   const [activeTypeFilters, setActiveTypeFilters] = useState(new Set([
     "requirement", "actor", "component", "entity", "api", "workflow", "test"
   ]));
@@ -47,21 +51,23 @@ export default function CausalGraph({
 
   const graph = useMemo(() => buildGraphIndex(canonicalModel), [canonicalModel]);
 
-  // Filter nodes based on search and active type filters
-  const filteredNodes = useMemo(() => {
-    return graph.nodes.filter(node => {
-      if (!activeTypeFilters.has(node.type)) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return (
-          (node.label && node.label.toLowerCase().includes(q)) ||
-          (node.id && node.id.toLowerCase().includes(q)) ||
-          (node.type && node.type.toLowerCase().includes(q))
-        );
+  // Close filter popover on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target)) {
+        setIsFilterOpen(false);
       }
-      return true;
-    });
-  }, [graph.nodes, activeTypeFilters, searchQuery]);
+    }
+    if (isFilterOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isFilterOpen]);
+
+  // Filter nodes based on active type filters
+  const filteredNodes = useMemo(() => {
+    return graph.nodes.filter(node => activeTypeFilters.has(node.type));
+  }, [graph.nodes, activeTypeFilters]);
 
   const filteredNodeIds = useMemo(() => new Set(filteredNodes.map(n => n.id)), [filteredNodes]);
 
@@ -69,24 +75,36 @@ export default function CausalGraph({
     return graph.edges.filter(e => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target));
   }, [graph.edges, filteredNodeIds]);
 
-  // Selected node inspection
+  // Selected node inspection neighborhood
   const selectedNeighborhood = useMemo(() => {
     if (!selectedNodeId) return null;
     return inspectNodeNeighborhood(graph, selectedNodeId);
   }, [graph, selectedNodeId]);
 
-  // ─── Multi-Layout Calculation Engine ──────────────────────────────────────
-  const { nodePositions, boundingBox, clusters } = useMemo(() => {
+  // Focus Mode: connected set for dimming non-relevant nodes
+  const connectedNodeIds = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const set = new Set([selectedNodeId]);
+    if (selectedNeighborhood) {
+      (selectedNeighborhood.directUpstream || []).forEach(n => set.add(n.id));
+      (selectedNeighborhood.directDownstream || []).forEach(n => set.add(n.id));
+      (selectedNeighborhood.transitiveDownstream || []).forEach(n => set.add(n.id));
+    }
+    return set;
+  }, [selectedNodeId, selectedNeighborhood]);
+
+  // ─── Precise Multi-Layout Calculation Engine ──────────────────────────────
+  const { nodePositions, boundingBox, columnHeaders } = useMemo(() => {
     const positions = new Map();
-    const clusterBounds = [];
-    const nodeW = 210;
-    const nodeH = 62;
+    const headers = [];
+    const nodeW = 200;
+    const nodeH = 54;
 
     if (filteredNodes.length === 0) {
       return {
         nodePositions: positions,
         boundingBox: { minX: 0, minY: 0, maxX: 600, maxY: 400, width: 600, height: 400 },
-        clusters: []
+        columnHeaders: []
       };
     }
 
@@ -108,34 +126,30 @@ export default function CausalGraph({
       });
 
       const colOrder = ["requirement", "actor", "component", "api", "entity", "workflow", "test"];
-      let curX = 60;
-      const colSpacing = 90;
-      const rowSpacing = 80;
+      let curX = 40;
+      const colSpacing = 64;
+      const rowSpacing = 68;
 
       colOrder.forEach(type => {
         const list = columns[type] || [];
         if (list.length === 0) return;
 
-        let curY = 60;
-        const startY = curY;
+        const startY = 56;
+        headers.push({
+          type,
+          label: TYPE_CONFIG[type]?.label?.toUpperCase() || type.toUpperCase(),
+          x: curX + nodeW / 2,
+          y: 28,
+          count: list.length
+        });
 
         list.forEach((node, rowIdx) => {
           positions.set(node.id, {
             x: curX,
-            y: curY + rowIdx * rowSpacing,
+            y: startY + rowIdx * rowSpacing,
             width: nodeW,
             height: nodeH
           });
-        });
-
-        const clusterHeight = list.length * rowSpacing + 20;
-        clusterBounds.push({
-          type,
-          x: curX - 16,
-          y: startY - 24,
-          width: nodeW + 32,
-          height: clusterHeight,
-          count: list.length
         });
 
         curX += nodeW + colSpacing;
@@ -144,32 +158,39 @@ export default function CausalGraph({
     } else if (layoutMode === "tb") {
       // Top-to-Bottom Hierarchical Tree
       const tiers = {
-        tier1: [], // Actors & Requirements
-        tier2: [], // Components
-        tier3: [], // APIs
-        tier4: [], // Entities
-        tier5: []  // Workflows & Tests
+        tier1: { label: "SPECIFICATION & ROLES", nodes: [] },
+        tier2: { label: "CORE SERVICES & COMPONENTS", nodes: [] },
+        tier3: { label: "REST CONTRACTS & APIS", nodes: [] },
+        tier4: { label: "DATA PERSISTENCE & SCHEMAS", nodes: [] },
+        tier5: { label: "WORKFLOWS & VERIFICATION", nodes: [] }
       };
 
       filteredNodes.forEach(node => {
-        if (node.type === "actor" || node.type === "requirement") tiers.tier1.push(node);
-        else if (node.type === "component") tiers.tier2.push(node);
-        else if (node.type === "api") tiers.tier3.push(node);
-        else if (node.type === "entity") tiers.tier4.push(node);
-        else tiers.tier5.push(node);
+        if (node.type === "actor" || node.type === "requirement") tiers.tier1.nodes.push(node);
+        else if (node.type === "component") tiers.tier2.nodes.push(node);
+        else if (node.type === "api") tiers.tier3.nodes.push(node);
+        else if (node.type === "entity") tiers.tier4.nodes.push(node);
+        else tiers.tier5.nodes.push(node);
       });
 
-      let curY = 60;
-      const tierSpacing = 110;
-      const colSpacing = 240;
+      let curY = 48;
+      const tierSpacing = 90;
+      const colSpacing = 220;
 
       Object.keys(tiers).forEach(tierKey => {
-        const list = tiers[tierKey];
-        if (list.length === 0) return;
+        const tier = tiers[tierKey];
+        if (tier.nodes.length === 0) return;
 
-        list.forEach((node, idx) => {
+        headers.push({
+          label: tier.label,
+          x: 40,
+          y: curY - 14,
+          count: tier.nodes.length
+        });
+
+        tier.nodes.forEach((node, idx) => {
           positions.set(node.id, {
-            x: 60 + idx * colSpacing,
+            x: 40 + idx * colSpacing,
             y: curY,
             width: nodeW,
             height: nodeH
@@ -180,7 +201,7 @@ export default function CausalGraph({
       });
 
     } else {
-      // Grouped / Clustered View with 2D Layout
+      // Clustered View with 2D Layout
       const groups = {};
       filteredNodes.forEach(node => {
         if (!groups[node.type]) groups[node.type] = [];
@@ -189,40 +210,35 @@ export default function CausalGraph({
 
       const groupKeys = Object.keys(groups);
       const cols = Math.min(3, Math.max(1, groupKeys.length));
-      const groupWidth = 320;
-      const rowGap = 40;
-      const colGap = 50;
+      const groupWidth = 260;
+      const colGap = 40;
 
       groupKeys.forEach((gKey, gIdx) => {
         const colIdx = gIdx % cols;
         const rowIdx = Math.floor(gIdx / cols);
-        const gx = 60 + colIdx * (groupWidth + colGap);
-        const gy = 60 + rowIdx * 340;
+        const gx = 40 + colIdx * (groupWidth + colGap);
+        const gy = 40 + rowIdx * 300;
         const list = groups[gKey];
 
+        headers.push({
+          label: `${TYPE_CONFIG[gKey]?.label?.toUpperCase() || gKey.toUpperCase()} TIER`,
+          x: gx + groupWidth / 2,
+          y: gy + 14,
+          count: list.length
+        });
+
         list.forEach((node, nIdx) => {
-          const itemX = gx + 16;
-          const itemY = gy + 36 + nIdx * 76;
           positions.set(node.id, {
-            x: itemX,
-            y: itemY,
+            x: gx + 10,
+            y: gy + 32 + nIdx * 64,
             width: nodeW,
             height: nodeH
           });
         });
-
-        clusterBounds.push({
-          type: gKey,
-          x: gx,
-          y: gy,
-          width: groupWidth,
-          height: Math.max(120, 48 + list.length * 76),
-          count: list.length
-        });
       });
     }
 
-    // Compute bounding box
+    // Accurate bounding box calculated strictly from node positions
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     positions.forEach(pos => {
       minX = Math.min(minX, pos.x);
@@ -232,8 +248,11 @@ export default function CausalGraph({
     });
 
     if (minX === Infinity) {
-      minX = 0; minY = 0; maxX = 800; maxY = 500;
+      minX = 0; minY = 0; maxX = 600; maxY = 400;
     }
+
+    const realW = Math.max(100, maxX - minX);
+    const realH = Math.max(100, maxY - minY);
 
     return {
       nodePositions: positions,
@@ -242,14 +261,14 @@ export default function CausalGraph({
         minY,
         maxX,
         maxY,
-        width: Math.max(800, maxX - minX + 160),
-        height: Math.max(500, maxY - minY + 160)
+        width: realW,
+        height: realH
       },
-      clusters: clusterBounds
+      columnHeaders: headers
     };
   }, [filteredNodes, layoutMode]);
 
-  // ─── Fit to View Callback ──────────────────────────────────────────────────
+  // ─── Mathematically Symmetrical Fit-to-View ───────────────────────────────
   const fitToView = useCallback(() => {
     if (!containerRef.current) return;
     const { clientWidth, clientHeight } = containerRef.current;
@@ -258,25 +277,26 @@ export default function CausalGraph({
     const graphW = boundingBox.width;
     const graphH = boundingBox.height;
 
-    // Calculate scale with 60px padding
-    const scaleX = (clientWidth - 80) / graphW;
-    const scaleY = (clientHeight - 80) / graphH;
-    const newZoom = Math.max(0.3, Math.min(1.0, Math.min(scaleX, scaleY)));
+    // Use 48px padding around graph
+    const padding = 48;
+    const scaleX = (clientWidth - padding * 2) / graphW;
+    const scaleY = (clientHeight - padding * 2) / graphH;
 
-    // Center offset
-    const offsetX = Math.max(20, (clientWidth - graphW * newZoom) / 2);
-    const offsetY = Math.max(20, (clientHeight - graphH * newZoom) / 2);
+    // Zoom clamped strictly between 0.15 and 1.25 to prevent tiny thumbnail or clipping
+    const newZoom = Math.max(0.15, Math.min(1.25, Math.min(scaleX, scaleY)));
+
+    // Exact centering: subtract minX * newZoom and minY * newZoom so the first node starts with equal margins!
+    const offsetX = (clientWidth - graphW * newZoom) / 2 - boundingBox.minX * newZoom;
+    const offsetY = (clientHeight - graphH * newZoom) / 2 - boundingBox.minY * newZoom;
 
     setZoom(Number(newZoom.toFixed(2)));
     setPan({ x: Math.round(offsetX), y: Math.round(offsetY) });
   }, [boundingBox]);
 
-  // Auto-fit using ResizeObserver so we trigger only when the container has a real size
+  // Auto-fit using ResizeObserver triggered when container has painted dimensions
   useEffect(() => {
     if (!containerRef.current) return;
-    // Immediate attempt
-    const immediate = setTimeout(fitToView, 50);
-    // ResizeObserver as fallback for when the container size changes after mount
+    const immediate = setTimeout(fitToView, 40);
     const ro = new ResizeObserver(() => {
       clearTimeout(immediate);
       fitToView();
@@ -286,14 +306,13 @@ export default function CausalGraph({
       clearTimeout(immediate);
       ro.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitToView, layoutMode]);
 
   // Wheel zoom on the SVG canvas
   function handleWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.08 : 0.08;
-    setZoom(z => Number(Math.max(0.2, Math.min(2.5, z + delta)).toFixed(2)));
+    const delta = e.deltaY > 0 ? -0.06 : 0.06;
+    setZoom(z => Number(Math.max(0.15, Math.min(2.0, z + delta)).toFixed(2)));
   }
 
   // ─── Center on Selected Node ───────────────────────────────────────────────
@@ -308,7 +327,6 @@ export default function CausalGraph({
     setPan({ x: Math.round(targetX), y: Math.round(targetY) });
   }, [nodePositions, zoom]);
 
-  // Center when externalSelectedNodeId changes
   useEffect(() => {
     if (externalSelectedNodeId) {
       const timer = setTimeout(() => centerNode(externalSelectedNodeId), 60);
@@ -328,10 +346,14 @@ export default function CausalGraph({
     });
   }
 
+  // Canvas Pan Drag Handlers
   function handleMouseDown(e) {
-    if (e.button !== 0) return;
+    if (e.target.closest("button") || e.target.closest(".graph-node-group")) return;
     setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    dragStartRef.current = {
+      x: e.clientX - pan.x,
+      y: e.clientY - pan.y
+    };
   }
 
   function handleMouseMove(e) {
@@ -346,502 +368,645 @@ export default function CausalGraph({
     setIsDragging(false);
   }
 
-  // Node highlighting state
-  function getNodeState(nodeId) {
-    if (!selectedNodeId) return "normal";
-    if (nodeId === selectedNodeId) return "selected";
-    if (selectedNeighborhood?.directUpstream.some(n => n.id === nodeId)) return "upstream";
-    if (selectedNeighborhood?.directDownstream.some(n => n.id === nodeId)) return "downstream";
-    if (selectedNeighborhood?.transitiveDownstream.some(n => n.id === nodeId)) return "transitive";
-    return "dimmed";
-  }
+  // Semantic Zoom Threshold: At < 0.65, render compact view; at >= 0.65, render detailed view
+  const isSemanticCompact = zoom < 0.65;
 
   return (
-    <div className="causal-graph-wrapper" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 620, background: "#08090d", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", overflow: "hidden" }}>
-      {/* ─── Compact Top Control Toolbar ────────────────────────────────────── */}
-      <div className="graph-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "#0d1017", flexWrap: "wrap", gap: 10 }}>
-        {/* Left: Search & Filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", background: "#121722", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "5px 10px", width: 200 }}>
-            <Search size={13} style={{ color: "#737e92", marginRight: 6 }} />
-            <input
-              type="text"
-              placeholder="Search artifacts or IDs…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ background: "transparent", border: "none", color: "#f3f5fa", fontSize: 12, outline: "none", width: "100%" }}
-            />
-          </div>
+    <div className="causal-graph-wrapper" style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      width: "100%",
+      background: "var(--ide-bg-canvas)",
+      position: "relative",
+      overflow: "hidden"
+    }}>
+      {/* ─── Slim Canvas Toolbar (36px) ────────────────────────────────────── */}
+      <div className="canvas-slim-toolbar" style={{
+        height: 36,
+        padding: "0 12px",
+        background: "var(--ide-bg-chrome)",
+        borderBottom: "1px solid var(--ide-border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexShrink: 0,
+        zIndex: 15,
+        userSelect: "none"
+      }}>
+        {/* Left: Type Filter Popover Trigger */}
+        <div style={{ position: "relative" }} ref={filterPopoverRef}>
+          <button
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "var(--ide-bg-panels)",
+              border: "1px solid var(--ide-border)",
+              borderRadius: "var(--ide-radius-sm)",
+              padding: "3px 8px",
+              color: "var(--ide-text-secondary)",
+              fontSize: "var(--ide-font-xs)",
+              fontWeight: 500,
+              cursor: "pointer"
+            }}
+            title="Filter visible artifact types"
+          >
+            <Filter size={12} style={{ color: "var(--ide-accent)" }} />
+            <span>Filter Types</span>
+            <span style={{
+              fontSize: 10,
+              background: "var(--ide-accent-subtle)",
+              color: "var(--ide-accent)",
+              padding: "1px 5px",
+              borderRadius: "var(--ide-radius-pill)"
+            }}>
+              {activeTypeFilters.size}/{Object.keys(TYPE_CONFIG).length}
+            </span>
+            <ChevronDown size={11} />
+          </button>
 
-          {/* Type Filter Pills */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            {Object.keys(TYPE_CONFIG).map(type => {
-              const active = activeTypeFilters.has(type);
-              const colorInfo = TYPE_CONFIG[type];
-              const count = graph.nodes.filter(n => n.type === type).length;
-              if (count === 0) return null;
-
-              return (
-                <button
-                  key={type}
-                  onClick={() => toggleTypeFilter(type)}
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    border: `1px solid ${active ? colorInfo.border : "rgba(255,255,255,0.1)"}`,
-                    background: active ? colorInfo.bg : "transparent",
-                    color: active ? colorInfo.text : "#737e92",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    transition: "all 0.15s ease"
-                  }}
-                  title={`Filter ${colorInfo.label}`}
-                >
-                  <span>{colorInfo.label}</span>
-                  <span style={{ fontSize: 9, opacity: 0.75 }}>({count})</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Filter Popover Menu */}
+          {isFilterOpen && (
+            <div style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              marginTop: 4,
+              width: 210,
+              background: "var(--ide-bg-panels)",
+              border: "1px solid var(--ide-border)",
+              borderRadius: "var(--ide-radius-md)",
+              boxShadow: "var(--ide-shadow-popover)",
+              padding: "4px",
+              zIndex: "var(--ide-z-popover)"
+            }}>
+              <div style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "var(--ide-text-muted)", textTransform: "uppercase" }}>
+                Filter Artifact Types
+              </div>
+              {Object.keys(TYPE_CONFIG).map(type => {
+                const conf = TYPE_CONFIG[type];
+                const active = activeTypeFilters.has(type);
+                const count = graph.nodes.filter(n => n.type === type).length;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => toggleTypeFilter(type)}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "5px 8px",
+                      borderRadius: "var(--ide-radius-xs)",
+                      background: active ? "var(--ide-bg-hover)" : "transparent",
+                      border: "none",
+                      color: active ? "var(--ide-text-primary)" : "var(--ide-text-muted)",
+                      fontSize: "var(--ide-font-xs)",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: conf.dot }} />
+                      <span>{conf.label}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, color: "var(--ide-text-dim)" }}>({count})</span>
+                      {active && <Check size={12} style={{ color: "var(--ide-accent)" }} />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Right: Layout Switcher, View Mode, Zoom & Fit Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {/* Layout Orientation Switcher */}
-          <div style={{ display: "flex", background: "#121722", borderRadius: 6, padding: 2, border: "1px solid rgba(255,255,255,0.08)" }}>
-            <button
-              onClick={() => setLayoutMode("lr")}
-              style={{
-                padding: "4px 8px",
-                fontSize: 11,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-                background: layoutMode === "lr" ? "rgba(139, 124, 255, 0.25)" : "transparent",
-                color: layoutMode === "lr" ? "#c2b9ff" : "#737e92"
-              }}
-              title="Layered Left-to-Right Architecture"
-            >
-              Layered (L→R)
-            </button>
-            <button
-              onClick={() => setLayoutMode("tb")}
-              style={{
-                padding: "4px 8px",
-                fontSize: 11,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-                background: layoutMode === "tb" ? "rgba(139, 124, 255, 0.25)" : "transparent",
-                color: layoutMode === "tb" ? "#c2b9ff" : "#737e92"
-              }}
-              title="Top-to-Bottom Dependency Tree"
-            >
-              Hierarchical (T↓B)
-            </button>
-            <button
-              onClick={() => setLayoutMode("cluster")}
-              style={{
-                padding: "4px 8px",
-                fontSize: 11,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-                background: layoutMode === "cluster" ? "rgba(139, 124, 255, 0.25)" : "transparent",
-                color: layoutMode === "cluster" ? "#c2b9ff" : "#737e92"
-              }}
-              title="Clustered System Boundaries"
-            >
-              Clustered
-            </button>
+        {/* Right: Layout Dropdown & Table View Toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Layout Mode Selector */}
+          <div style={{
+            display: "inline-flex",
+            background: "var(--ide-bg-canvas)",
+            border: "1px solid var(--ide-border)",
+            borderRadius: "var(--ide-radius-sm)",
+            padding: 2
+          }}>
+            {[
+              { id: "lr", label: "Layered (L→R)" },
+              { id: "tb", label: "Hierarchical (T↓B)" },
+              { id: "cluster", label: "Clustered" }
+            ].map(m => (
+              <button
+                key={m.id}
+                onClick={() => setLayoutMode(m.id)}
+                style={{
+                  padding: "3px 8px",
+                  fontSize: "var(--ide-font-xs)",
+                  fontWeight: layoutMode === m.id ? 600 : 400,
+                  border: "none",
+                  borderRadius: "var(--ide-radius-xs)",
+                  cursor: "pointer",
+                  background: layoutMode === m.id ? "var(--ide-accent-subtle)" : "transparent",
+                  color: layoutMode === m.id ? "var(--ide-accent)" : "var(--ide-text-muted)"
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
 
-          {/* View Mode Toggle: Graph vs Synchronized Table */}
-          <div style={{ display: "flex", background: "#121722", borderRadius: 6, padding: 2, border: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Graph / Table View Toggle */}
+          <div style={{
+            display: "inline-flex",
+            background: "var(--ide-bg-canvas)",
+            border: "1px solid var(--ide-border)",
+            borderRadius: "var(--ide-radius-sm)",
+            padding: 2
+          }}>
             <button
               onClick={() => setViewMode("graph")}
               style={{
-                padding: "4px 8px",
-                fontSize: 11,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                background: viewMode === "graph" ? "rgba(83, 215, 244, 0.2)" : "transparent",
-                color: viewMode === "graph" ? "#53d7f4" : "#737e92"
+                padding: "3px 8px",
+                fontSize: "var(--ide-font-xs)",
+                fontWeight: viewMode === "graph" ? 600 : 400,
+                border: "none",
+                borderRadius: "var(--ide-radius-xs)",
+                cursor: "pointer",
+                background: viewMode === "graph" ? "var(--ide-accent-subtle)" : "transparent",
+                color: viewMode === "graph" ? "var(--ide-accent)" : "var(--ide-text-muted)"
               }}
-              title="Graph View"
+              title="Interactive Graph View"
             >
-              <LayoutGrid size={12} /> Graph
+              <LayoutGrid size={11} />
+              <span>Graph</span>
             </button>
             <button
               onClick={() => setViewMode("table")}
               style={{
-                padding: "4px 8px",
-                fontSize: 11,
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                background: viewMode === "table" ? "rgba(83, 215, 244, 0.2)" : "transparent",
-                color: viewMode === "table" ? "#53d7f4" : "#737e92"
+                padding: "3px 8px",
+                fontSize: "var(--ide-font-xs)",
+                fontWeight: viewMode === "table" ? 600 : 400,
+                border: "none",
+                borderRadius: "var(--ide-radius-xs)",
+                cursor: "pointer",
+                background: viewMode === "table" ? "var(--ide-accent-subtle)" : "transparent",
+                color: viewMode === "table" ? "var(--ide-accent)" : "var(--ide-text-muted)"
               }}
-              title="Synchronized Artifact Table"
+              title="Artifact Table View"
             >
-              <Table size={12} /> Table
+              <Table size={11} />
+              <span>Table</span>
             </button>
           </div>
+        </div>
+      </div>
 
-          {/* Graph Zoom & Fit Tools */}
-          {viewMode === "graph" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {/* ─── Main Viewport: SVG Canvas or Synchronized Table ─────────────────── */}
+      <div style={{ display: "flex", flex: 1, position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
+        {viewMode === "graph" ? (
+          <div
+            ref={containerRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+            style={{
+              flex: 1,
+              width: "100%",
+              height: "100%",
+              overflow: "hidden",
+              position: "relative",
+              cursor: isDragging ? "grabbing" : "grab",
+              background: "var(--ide-bg-canvas)"
+            }}
+          >
+            <svg
+              width="100%"
+              height="100%"
+              style={{ display: "block" }}
+            >
+              <defs>
+                <marker id="causal-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--ide-text-dim)" />
+                </marker>
+                <marker id="causal-arrow-downstream" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--ide-red)" />
+                </marker>
+                <marker id="causal-arrow-upstream" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--ide-accent)" />
+                </marker>
+              </defs>
+
+              {/* Scaled & Panned Group */}
+              <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                {/* Subtle Canvas Dot Grid */}
+                <pattern id="canvas-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="1" fill="rgba(255, 255, 255, 0.05)" />
+                </pattern>
+                <rect
+                  x={boundingBox.minX - 1000}
+                  y={boundingBox.minY - 1000}
+                  width={boundingBox.width + 2000}
+                  height={boundingBox.height + 2000}
+                  fill="url(#canvas-grid)"
+                />
+
+                {/* Column Headers in Layered L→R mode */}
+                {columnHeaders.map((hdr, hIdx) => (
+                  <g key={hIdx}>
+                    <text
+                      x={hdr.x}
+                      y={hdr.y}
+                      fill="var(--ide-text-muted)"
+                      fontSize="10"
+                      fontWeight="700"
+                      textAnchor="middle"
+                      letterSpacing="0.8"
+                    >
+                      {hdr.label} ({hdr.count})
+                    </text>
+                  </g>
+                ))}
+
+                {/* Dependency Edges */}
+                {filteredEdges.map(edge => {
+                  const src = nodePositions.get(edge.source);
+                  const tgt = nodePositions.get(edge.target);
+                  if (!src || !tgt) return null;
+
+                  let x1, y1, x2, y2, pathD, midX, midY;
+
+                  if (layoutMode === "tb") {
+                    x1 = src.x + src.width / 2;
+                    y1 = src.y + src.height;
+                    x2 = tgt.x + tgt.width / 2;
+                    y2 = tgt.y;
+                    const dy = Math.abs(y2 - y1) * 0.5;
+                    pathD = `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
+                    midX = (x1 + x2) / 2;
+                    midY = (y1 + y2) / 2;
+                  } else {
+                    x1 = src.x + src.width;
+                    y1 = src.y + src.height / 2;
+                    x2 = tgt.x;
+                    y2 = tgt.y + tgt.height / 2;
+                    const dx = Math.abs(x2 - x1) * 0.5;
+                    pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+                    midX = (x1 + x2) / 2;
+                    midY = (y1 + y2) / 2;
+                  }
+
+                  const isDownstream = selectedNodeId && (edge.source === selectedNodeId || selectedNeighborhood?.directDownstream.some(n => n.id === edge.target));
+                  const isUpstream = selectedNodeId && (edge.target === selectedNodeId || selectedNeighborhood?.directUpstream.some(n => n.id === edge.source));
+                  const isDimmed = selectedNodeId && !isDownstream && !isUpstream;
+                  const isHovered = hoveredEdgeId === edge.id;
+
+                  let strokeColor = "var(--ide-border)";
+                  let marker = "url(#causal-arrow)";
+                  let strokeWidth = 1.2;
+
+                  if (isDownstream) {
+                    strokeColor = "var(--ide-red)";
+                    marker = "url(#causal-arrow-downstream)";
+                    strokeWidth = 2.2;
+                  } else if (isUpstream) {
+                    strokeColor = "var(--ide-accent)";
+                    marker = "url(#causal-arrow-upstream)";
+                    strokeWidth = 2.2;
+                  } else if (isDimmed) {
+                    strokeColor = "rgba(255, 255, 255, 0.03)";
+                  }
+
+                  return (
+                    <g
+                      key={edge.id}
+                      onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                      onMouseLeave={() => setHoveredEdgeId(null)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <path
+                        d={pathD}
+                        fill="none"
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                        markerEnd={marker}
+                      />
+                      {/* Hover-only relationship pill label */}
+                      {(isHovered || isDownstream || isUpstream) && (
+                        <g transform={`translate(${midX}, ${midY})`}>
+                          <rect
+                            x={-28}
+                            y={-9}
+                            width={56}
+                            height={18}
+                            rx={4}
+                            fill="var(--ide-bg-chrome)"
+                            stroke={strokeColor}
+                            strokeWidth={1}
+                          />
+                          <text
+                            x={0}
+                            y={3}
+                            fill="var(--ide-text-primary)"
+                            fontSize="9"
+                            fontFamily="var(--ide-font-mono)"
+                            textAnchor="middle"
+                            fontWeight="600"
+                          >
+                            {edge.type || "calls"}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Graph Nodes */}
+                {filteredNodes.map(node => {
+                  const pos = nodePositions.get(node.id);
+                  if (!pos) return null;
+
+                  const colorInfo = TYPE_CONFIG[node.type] || TYPE_CONFIG.component;
+                  const isSelected = selectedNodeId === node.id;
+                  const isDimmed = connectedNodeIds && !connectedNodeIds.has(node.id);
+                  const isUpstream = selectedNeighborhood?.directUpstream.some(n => n.id === node.id);
+                  const isDownstream = selectedNeighborhood?.directDownstream.some(n => n.id === node.id);
+
+                  let borderColor = colorInfo.border;
+                  let borderWidth = 1;
+                  if (isSelected) {
+                    borderColor = "var(--ide-accent)";
+                    borderWidth = 2.5;
+                  } else if (isUpstream) {
+                    borderColor = "var(--ide-accent)";
+                    borderWidth = 2;
+                  } else if (isDownstream) {
+                    borderColor = "var(--ide-red)";
+                    borderWidth = 2;
+                  }
+
+                  return (
+                    <g
+                      key={node.id}
+                      className="graph-node-group"
+                      transform={`translate(${pos.x}, ${pos.y})`}
+                      onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+                      style={{
+                        cursor: "pointer",
+                        opacity: isDimmed ? 0.18 : 1.0,
+                        transition: "opacity 160ms ease"
+                      }}
+                    >
+                      {/* Node Container Card */}
+                      <rect
+                        width={pos.width}
+                        height={pos.height}
+                        rx={6}
+                        fill="var(--ide-bg-panels)"
+                        stroke={borderColor}
+                        strokeWidth={borderWidth}
+                      />
+
+                      {/* Accent Left Edge Strip */}
+                      <rect
+                        x={0}
+                        y={0}
+                        width={4}
+                        height={pos.height}
+                        rx={2}
+                        fill={colorInfo.border}
+                      />
+
+                      {/* Semantic Node Content */}
+                      {isSemanticCompact ? (
+                        /* Compact view when zoomed out (< 0.65) */
+                        <text
+                          x={14}
+                          y={32}
+                          fill="var(--ide-text-primary)"
+                          fontSize="12"
+                          fontWeight="600"
+                        >
+                          {node.label?.length > 20 ? `${node.label.slice(0, 18)}…` : node.label}
+                        </text>
+                      ) : (
+                        /* Detailed view when zoomed in (>= 0.65) */
+                        <>
+                          <text
+                            x={14}
+                            y={22}
+                            fill="var(--ide-text-primary)"
+                            fontSize="12"
+                            fontWeight="600"
+                          >
+                            {node.label?.length > 22 ? `${node.label.slice(0, 20)}…` : node.label}
+                          </text>
+
+                          <text
+                            x={14}
+                            y={40}
+                            fill="var(--ide-text-muted)"
+                            fontSize="10"
+                            fontFamily="var(--ide-font-mono)"
+                          >
+                            {node.id}
+                          </text>
+
+                          {/* Centrality / Degree Badge */}
+                          <g transform={`translate(${pos.width - 32}, 16)`}>
+                            <rect
+                              width={22}
+                              height={16}
+                              rx={3}
+                              fill="var(--ide-bg-canvas)"
+                              stroke="var(--ide-border)"
+                            />
+                            <text
+                              x={11}
+                              y={12}
+                              fill="var(--ide-text-secondary)"
+                              fontSize="9"
+                              fontWeight="700"
+                              textAnchor="middle"
+                            >
+                              {node.centrality || 1}
+                            </text>
+                          </g>
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+
+            {/* ─── Pinned Floating Legend (Bottom-Left) ────────────────────── */}
+            <div style={{
+              position: "absolute",
+              bottom: 14,
+              left: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "var(--ide-bg-chrome)",
+              border: "1px solid var(--ide-border)",
+              borderRadius: "var(--ide-radius-pill)",
+              padding: "4px 12px",
+              boxShadow: "var(--ide-shadow-sm)",
+              fontSize: 10,
+              color: "var(--ide-text-muted)",
+              zIndex: 10,
+              userSelect: "none"
+            }}>
+              {Object.keys(TYPE_CONFIG).slice(0, 5).map(t => (
+                <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: TYPE_CONFIG[t].dot }} />
+                  <span>{TYPE_CONFIG[t].label}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* ─── Pinned Floating Zoom & Fit Controls (Bottom-Right) ──────── */}
+            <div style={{
+              position: "absolute",
+              bottom: 14,
+              right: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              background: "var(--ide-bg-chrome)",
+              border: "1px solid var(--ide-border)",
+              borderRadius: "var(--ide-radius-md)",
+              padding: 2,
+              boxShadow: "var(--ide-shadow-md)",
+              zIndex: 10
+            }}>
               <button
-                onClick={fitToView}
-                style={{ padding: "5px 8px", background: "#121722", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#f3f5fa", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}
-                title="Fit all nodes to view"
-              >
-                <Maximize2 size={13} /> Fit
-              </button>
-              {selectedNodeId && (
-                <button
-                  onClick={() => centerNode(selectedNodeId)}
-                  style={{ padding: "5px 8px", background: "rgba(83, 215, 244, 0.15)", border: "1px solid rgba(83, 215, 244, 0.3)", borderRadius: 6, color: "#53d7f4", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}
-                  title="Center Selected Node"
-                >
-                  <Crosshair size={13} /> Center
-                </button>
-              )}
-              <button
-                onClick={() => setZoom(z => Math.min(Number((z + 0.15).toFixed(2)), 2.2))}
-                style={{ padding: "5px 8px", background: "#121722", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#f3f5fa", cursor: "pointer" }}
+                onClick={() => setZoom(z => Math.min(Number((z + 0.12).toFixed(2)), 2.0))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--ide-text-secondary)",
+                  padding: "5px 7px",
+                  cursor: "pointer",
+                  borderRadius: "var(--ide-radius-xs)"
+                }}
                 title="Zoom In"
               >
                 <ZoomIn size={13} />
               </button>
               <button
-                onClick={() => setZoom(z => Math.max(Number((z - 0.15).toFixed(2)), 0.3))}
-                style={{ padding: "5px 8px", background: "#121722", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#f3f5fa", cursor: "pointer" }}
+                onClick={() => setZoom(z => Math.max(Number((z - 0.12).toFixed(2)), 0.15))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--ide-text-secondary)",
+                  padding: "5px 7px",
+                  cursor: "pointer",
+                  borderRadius: "var(--ide-radius-xs)"
+                }}
                 title="Zoom Out"
               >
                 <ZoomOut size={13} />
               </button>
               <button
-                onClick={() => { setZoom(1); setPan({ x: 40, y: 40 }); setSelectedNodeId(null); setSearchQuery(""); }}
-                style={{ padding: "5px 8px", background: "#121722", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#f3f5fa", cursor: "pointer" }}
-                title="Reset View"
+                onClick={() => { setZoom(1); setPan({ x: 40, y: 40 }); }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--ide-text-secondary)",
+                  padding: "5px 7px",
+                  cursor: "pointer",
+                  borderRadius: "var(--ide-radius-xs)"
+                }}
+                title="Reset Zoom & Pan"
               >
                 <RotateCcw size={13} />
               </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Warning / Empty State Banners ──────────────────────────────────── */}
-      {filteredNodes.length === 0 && (
-        <div style={{ padding: "48px 24px", textAlign: "center", color: "#a2abbd" }}>
-          <AlertTriangle size={32} style={{ color: "#f3b96b", margin: "0 auto 12px" }} />
-          <h4 style={{ color: "#f3f5fa", margin: "0 0 6px" }}>No Artifacts Match the Active Filter</h4>
-          <p style={{ fontSize: 13, margin: 0 }}>
-            {graph.nodes.length === 0
-              ? "This project has no canonical components or endpoints compiled yet. Run a synthesis or reload a blueprint."
-              : "Try enabling more artifact types in the filter bar or clearing your search query."}
-          </p>
-        </div>
-      )}
-
-      {filteredNodes.length > 0 && filteredEdges.length === 0 && graph.edges.length === 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", background: "rgba(243, 185, 107, 0.12)", borderBottom: "1px solid rgba(243, 185, 107, 0.25)", color: "#f3b96b", fontSize: 12 }}>
-          <Info size={14} />
-          <span>Nodes exist but no explicit relationship edges are registered between these artifacts.</span>
-        </div>
-      )}
-
-      {/* ─── Main Viewport: SVG Canvas or Synchronized Table ─────────────────── */}
-      {filteredNodes.length > 0 && (
-        <div style={{ display: "flex", flex: 1, position: "relative", minHeight: 520, overflow: "hidden" }}>
-          {viewMode === "graph" ? (
-            /* Interactive Canvas */
-            <div
-              ref={containerRef}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onWheel={handleWheel}
-              style={{
-                flex: 1,
-                overflow: "hidden",
-                position: "relative",
-                cursor: isDragging ? "grabbing" : "grab",
-                background: "#08090d"
-              }}
-            >
-              <svg
-                width="100%"
-                height="100%"
-                style={{ display: "block" }}
+              <button
+                onClick={fitToView}
+                style={{
+                  background: "var(--ide-accent-subtle)",
+                  border: "none",
+                  color: "var(--ide-accent)",
+                  padding: "5px 8px",
+                  cursor: "pointer",
+                  borderRadius: "var(--ide-radius-xs)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 10,
+                  fontWeight: 600
+                }}
+                title="Fit to view"
               >
-                <defs>
-                  <marker id="causal-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 1 L 9 5 L 0 9 z" fill="#53d7f4" />
-                  </marker>
-                  <marker id="causal-arrow-downstream" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 1 L 9 5 L 0 9 z" fill="#ff737d" />
-                  </marker>
-                  <marker id="causal-arrow-upstream" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 1 L 9 5 L 0 9 z" fill="#8b7cff" />
-                  </marker>
-                </defs>
-
-                {/* Scaled & Panned Group */}
-                <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-                  {/* Background Grid Pattern */}
-                  <pattern id="canvas-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-                    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.025)" strokeWidth="1" />
-                  </pattern>
-                  <rect
-                    x={-500}
-                    y={-500}
-                    width={boundingBox.width + 1000}
-                    height={boundingBox.height + 1000}
-                    fill="url(#canvas-grid)"
-                  />
-
-                  {/* Cluster Boundaries (Clustered or Layered Mode) */}
-                  {clusters.map((cluster, cIdx) => (
-                    <g key={cIdx}>
-                      <rect
-                        x={cluster.x}
-                        y={cluster.y}
-                        width={cluster.width}
-                        height={cluster.height}
-                        rx={12}
-                        fill="rgba(18, 23, 34, 0.35)"
-                        stroke="rgba(255, 255, 255, 0.05)"
-                        strokeDasharray="4 4"
-                      />
-                      <text
-                        x={cluster.x + 12}
-                        y={cluster.y + 16}
-                        fill="#737e92"
-                        fontSize="10"
-                        fontWeight="700"
-                        letterSpacing="0.8"
-                        textTransform="uppercase"
-                      >
-                        {cluster.type} tier ({cluster.count})
-                      </text>
-                    </g>
-                  ))}
-
-                  {/* Dependency Edges */}
-                  {filteredEdges.map(edge => {
-                    const src = nodePositions.get(edge.source);
-                    const tgt = nodePositions.get(edge.target);
-                    if (!src || !tgt) return null;
-
-                    let x1, y1, x2, y2, pathD;
-
-                    if (layoutMode === "tb") {
-                      // Top to Bottom routing
-                      x1 = src.x + src.width / 2;
-                      y1 = src.y + src.height;
-                      x2 = tgt.x + tgt.width / 2;
-                      y2 = tgt.y;
-                      const dy = Math.abs(y2 - y1) * 0.5;
-                      pathD = `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
-                    } else {
-                      // Left to Right routing
-                      x1 = src.x + src.width;
-                      y1 = src.y + src.height / 2;
-                      x2 = tgt.x;
-                      y2 = tgt.y + tgt.height / 2;
-                      const dx = Math.abs(x2 - x1) * 0.5;
-                      pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-                    }
-
-                    const isDownstream = selectedNodeId && (edge.source === selectedNodeId || selectedNeighborhood?.directDownstream.some(n => n.id === edge.target));
-                    const isUpstream = selectedNodeId && (edge.target === selectedNodeId || selectedNeighborhood?.directUpstream.some(n => n.id === edge.source));
-                    const isDimmed = selectedNodeId && !isDownstream && !isUpstream;
-
-                    let strokeColor = "rgba(83, 215, 244, 0.35)";
-                    let marker = "url(#causal-arrow)";
-                    let strokeWidth = 1.5;
-
-                    if (isDownstream) {
-                      strokeColor = "#ff737d";
-                      marker = "url(#causal-arrow-downstream)";
-                      strokeWidth = 2.5;
-                    } else if (isUpstream) {
-                      strokeColor = "#8b7cff";
-                      marker = "url(#causal-arrow-upstream)";
-                      strokeWidth = 2.5;
-                    } else if (isDimmed) {
-                      strokeColor = "rgba(255, 255, 255, 0.04)";
-                    }
-
-                    return (
-                      <g key={edge.id}>
-                        <path
-                          d={pathD}
-                          fill="none"
-                          stroke={strokeColor}
-                          strokeWidth={strokeWidth}
-                          markerEnd={marker}
-                          strokeDasharray={edge.critical ? "none" : "3 3"}
-                        />
-                      </g>
-                    );
-                  })}
-
-                  {/* Graph Nodes */}
-                  {filteredNodes.map(node => {
-                    const pos = nodePositions.get(node.id);
-                    if (!pos) return null;
-
-                    const colorInfo = TYPE_CONFIG[node.type] || TYPE_CONFIG.component;
-                    const nodeState = getNodeState(node.id);
-
-                    let borderColor = colorInfo.border;
-                    let bgColor = colorInfo.bg;
-                    let opacity = 1;
-                    let shadow = "none";
-
-                    if (nodeState === "selected") {
-                      borderColor = "#53d7f4";
-                      bgColor = "rgba(83, 215, 244, 0.28)";
-                      shadow = "0 0 16px rgba(83, 215, 244, 0.5)";
-                    } else if (nodeState === "downstream") {
-                      borderColor = "#ff737d";
-                      bgColor = "rgba(255, 115, 125, 0.22)";
-                      shadow = "0 0 12px rgba(255, 115, 125, 0.4)";
-                    } else if (nodeState === "upstream") {
-                      borderColor = "#8b7cff";
-                      bgColor = "rgba(139, 124, 255, 0.22)";
-                      shadow = "0 0 12px rgba(139, 124, 255, 0.4)";
-                    } else if (nodeState === "transitive") {
-                      borderColor = "rgba(255, 115, 125, 0.6)";
-                      bgColor = "rgba(255, 115, 125, 0.12)";
-                    } else if (nodeState === "dimmed") {
-                      opacity = 0.25;
-                    }
-
-                    return (
-                      <g
-                        key={node.id}
-                        transform={`translate(${pos.x}, ${pos.y})`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedNodeId(node.id === selectedNodeId ? null : node.id);
-                        }}
-                        style={{ cursor: "pointer", opacity, transition: "opacity 0.15s ease" }}
-                      >
-                        <rect
-                          width={pos.width}
-                          height={pos.height}
-                          rx={8}
-                          fill={bgColor}
-                          stroke={borderColor}
-                          strokeWidth={nodeState === "selected" ? 2 : 1}
-                          style={{ filter: shadow }}
-                        />
-
-                        {/* Top Chip: Type */}
-                        <rect x="8" y="8" width="62" height="15" rx="3" fill="rgba(0,0,0,0.5)" />
-                        <text x="12" y="19" fill={colorInfo.text} fontSize="9" fontWeight="700" letterSpacing="0.4">
-                          {node.type.toUpperCase()}
-                        </text>
-
-                        {/* Blast Radius Badge */}
-                        {node.blastRadius > 0 && (
-                          <g transform={`translate(${pos.width - 66}, 8)`}>
-                            <rect width="58" height="15" rx="3" fill="rgba(0,0,0,0.5)" stroke="rgba(255,115,125,0.3)" />
-                            <text x="6" y="11" fill="#ff737d" fontSize="8.5" fontWeight="600">
-                              ⚡ {node.blastRadius} blast
-                            </text>
-                          </g>
-                        )}
-
-                        {/* Main Label */}
-                        <text x="10" y="44" fill="#f3f5fa" fontSize="11.5" fontWeight="600">
-                          {node.label.length > 21 ? `${node.label.slice(0, 19)}…` : node.label}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </g>
-              </svg>
+                <Maximize2 size={12} />
+                <span>Fit</span>
+              </button>
             </div>
-          ) : (
-            /* Synchronized Structured Artifact Table */
-            <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "#08090d" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#737e92" }}>
-                    <th style={{ padding: "8px 12px" }}>ARTIFACT NAME</th>
-                    <th style={{ padding: "8px 12px" }}>STABLE ID</th>
-                    <th style={{ padding: "8px 12px" }}>TYPE</th>
-                    <th style={{ padding: "8px 12px" }}>CENTRALITY</th>
-                    <th style={{ padding: "8px 12px" }}>BLAST RADIUS</th>
-                    <th style={{ padding: "8px 12px" }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredNodes.map(node => {
-                    const isSelected = node.id === selectedNodeId;
-                    const colorInfo = TYPE_CONFIG[node.type] || TYPE_CONFIG.component;
-                    return (
-                      <tr
-                        key={node.id}
-                        onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+          </div>
+        ) : (
+          /* Synchronized Table View */
+          <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--ide-font-xs)", textAlign: "left" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--ide-border)", color: "var(--ide-text-muted)" }}>
+                  <th style={{ padding: "8px 12px" }}>ARTIFACT</th>
+                  <th style={{ padding: "8px 12px" }}>TYPE</th>
+                  <th style={{ padding: "8px 12px" }}>ID</th>
+                  <th style={{ padding: "8px 12px" }}>CENTRALITY</th>
+                  <th style={{ padding: "8px 12px" }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNodes.map(node => (
+                  <tr key={node.id} style={{ borderBottom: "1px solid var(--ide-border-subtle)" }}>
+                    <td style={{ padding: "8px 12px", color: "var(--ide-text-primary)", fontWeight: 600 }}>{node.label}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <span style={{
+                        padding: "2px 6px",
+                        borderRadius: "var(--ide-radius-xs)",
+                        background: TYPE_CONFIG[node.type]?.bg || "var(--ide-bg-hover)",
+                        color: TYPE_CONFIG[node.type]?.border || "var(--ide-text-primary)",
+                        fontSize: 10,
+                        fontWeight: 600
+                      }}>
+                        {node.type}
+                      </span>
+                    </td>
+                    <td style={{ padding: "8px 12px", fontFamily: "var(--ide-font-mono)", color: "var(--ide-text-muted)" }}>{node.id}</td>
+                    <td style={{ padding: "8px 12px", color: "var(--ide-text-secondary)" }}>{node.centrality || 1}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <button
+                        onClick={() => setSelectedNodeId(node.id)}
                         style={{
-                          borderBottom: "1px solid rgba(255,255,255,0.05)",
-                          background: isSelected ? "rgba(83, 215, 244, 0.12)" : "transparent",
-                          cursor: "pointer"
+                          background: "var(--ide-bg-hover)",
+                          border: "1px solid var(--ide-border)",
+                          color: "var(--ide-text-primary)",
+                          padding: "3px 8px",
+                          borderRadius: "var(--ide-radius-xs)",
+                          cursor: "pointer",
+                          fontSize: 11
                         }}
                       >
-                        <td style={{ padding: "10px 12px", color: "#f3f5fa", fontWeight: 600 }}>{node.label}</td>
-                        <td style={{ padding: "10px 12px", color: "#737e92", fontFamily: "monospace" }}>{node.id}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: colorInfo.bg, color: colorInfo.text, border: `1px solid ${colorInfo.border}` }}>
-                            {node.type.toUpperCase()}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 12px", color: "#53d7f4", fontWeight: 600 }}>{node.centrality}</td>
-                        <td style={{ padding: "10px 12px", color: node.blastRadius > 0 ? "#ff737d" : "#737e92", fontWeight: 600 }}>
-                          {node.blastRadius > 0 ? `⚡ ${node.blastRadius}` : "0"}
-                        </td>
-                        <td style={{ padding: "10px 12px" }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedNodeId(node.id);
-                              setViewMode("graph");
-                              setTimeout(() => centerNode(node.id), 80);
-                            }}
-                            className="secondary-button"
-                            style={{ padding: "3px 8px", fontSize: 11 }}
-                          >
-                            Inspect in Graph
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
